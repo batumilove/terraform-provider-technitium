@@ -224,7 +224,7 @@ func (p *TechnitiumProvider) Resources(_ context.Context) []func() resource.Reso
 	return []func() resource.Resource{
 		NewZoneResource,
 		NewRecordResource,
-		// TODO: Phase 3: NewServerSettingsResource
+		NewServerSettingsResource,
 		// TODO: Phase 4: NewTSIGKeyResource
 	}
 }
@@ -233,7 +233,7 @@ func (p *TechnitiumProvider) DataSources(_ context.Context) []func() datasource.
 	return []func() datasource.DataSource{
 		NewZoneDataSource,
 		NewRecordDataSource,
-		// TODO: Phase 3: NewServerSettingsDataSource
+		NewServerSettingsDataSource,
 	}
 }
 

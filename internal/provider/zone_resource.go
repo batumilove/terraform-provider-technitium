@@ -21,8 +21,9 @@ import (
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_ resource.Resource                = &ZoneResource{}
-	_ resource.ResourceWithImportState = &ZoneResource{}
+	_ resource.Resource                   = &ZoneResource{}
+	_ resource.ResourceWithImportState    = &ZoneResource{}
+	_ resource.ResourceWithModifyPlan     = &ZoneResource{}
 )
 
 func NewZoneResource() resource.Resource {
@@ -167,6 +168,32 @@ func (r *ZoneResource) Configure(_ context.Context, req resource.ConfigureReques
 	r.providerData = providerData
 }
 
+func (r *ZoneResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	// Don't modify plan on destroy
+	if req.Plan.Raw.IsNull() {
+		return
+	}
+
+	var plan ZoneResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// NSS validation: when running in NSS mode with ECDSA, P256 is not allowed.
+	// CNSSI 1253 requires P384 for higher security margin in classified environments.
+	if r.providerData != nil && r.providerData.NSS &&
+		plan.DNSSEC != nil && plan.DNSSEC.Enabled.ValueBool() &&
+		plan.DNSSEC.Algorithm.ValueString() == "ECDSA" &&
+		plan.DNSSEC.Curve.ValueString() == "P256" {
+
+		resp.Diagnostics.AddError("DNSSEC curve P256 not allowed in NSS mode",
+			"National Security Systems require ECDSA P384 (not P256) for DNSSEC signing. "+
+				"CNSSI 1253 mandates higher security margins for classified environments. "+
+				"Set dnssec { curve = \"P384\" } to comply.")
+	}
+}
+
 func (r *ZoneResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan ZoneResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -193,24 +220,12 @@ func (r *ZoneResource) Create(ctx context.Context, req resource.CreateRequest, r
 		return
 	}
 
-	// Handle DNSSEC signing
+	// Handle DNSSEC signing (NSS P256→P384 upgrade already handled in ModifyPlan)
 	if plan.DNSSEC != nil && plan.DNSSEC.Enabled.ValueBool() && plan.Type.ValueString() == "Primary" {
-		// NSS auto-upgrade: when running in NSS mode with ECDSA, upgrade to P384
-		// for SECRET and above classification levels (CNSSI 1253 requirement)
-		algorithm := plan.DNSSEC.Algorithm.ValueString()
-		curve := plan.DNSSEC.Curve.ValueString()
-		if r.providerData != nil && r.providerData.NSS && algorithm == "ECDSA" && curve == "P256" {
-			curve = "P384"
-			plan.DNSSEC.Curve = types.StringValue("P384")
-			resp.Diagnostics.AddWarning("DNSSEC curve upgraded for NSS",
-				"NSS mode active: DNSSEC curve automatically upgraded from P256 to P384 "+
-					"for CNSSI 1253 compliance (higher security margin for classified environments).")
-		}
-
 		err := r.client.ZoneDNSSECSign(
 			plan.Name.ValueString(),
-			algorithm,
-			curve,
+			plan.DNSSEC.Algorithm.ValueString(),
+			plan.DNSSEC.Curve.ValueString(),
 			plan.DNSSEC.NxProof.ValueString(),
 		)
 		if err != nil {

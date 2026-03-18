@@ -73,6 +73,87 @@ func TestAccRecordResource_TXT(t *testing.T) {
 	})
 }
 
+func TestAccRecordResource_AAAA(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccRecordAAAA("rec-aaaa-test.example.com"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("technitium_record.ipv6", "type", "AAAA"),
+					resource.TestCheckResourceAttr("technitium_record.ipv6", "value", "2001:db8::1"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccRecordResource_MX(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccRecordMX("rec-mx-test.example.com"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("technitium_record.mail", "type", "MX"),
+					resource.TestCheckResourceAttr("technitium_record.mail", "value", "mail.rec-mx-test.example.com"),
+					resource.TestCheckResourceAttr("technitium_record.mail", "priority", "10"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccRecordResource_SRV(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccRecordSRV("rec-srv-test.example.com"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("technitium_record.sip", "type", "SRV"),
+					resource.TestCheckResourceAttr("technitium_record.sip", "value", "sip.rec-srv-test.example.com"),
+					resource.TestCheckResourceAttr("technitium_record.sip", "priority", "10"),
+					resource.TestCheckResourceAttr("technitium_record.sip", "weight", "60"),
+					resource.TestCheckResourceAttr("technitium_record.sip", "port", "5060"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccRecordResource_NS(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccRecordNS("rec-ns-test.example.com"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("technitium_record.ns", "type", "NS"),
+					resource.TestCheckResourceAttr("technitium_record.ns", "value", "ns2.rec-ns-test.example.com"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccRecordResource_CAA(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccRecordCAA("rec-caa-test.example.com"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("technitium_record.caa", "type", "CAA"),
+					resource.TestCheckResourceAttr("technitium_record.caa", "value", "letsencrypt.org"),
+					resource.TestCheckResourceAttr("technitium_record.caa", "caa_flags", "0"),
+					resource.TestCheckResourceAttr("technitium_record.caa", "caa_tag", "issue"),
+				),
+			},
+		},
+	})
+}
+
 func TestAccRecordDataSource(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -151,6 +232,122 @@ resource "technitium_record" "spf" {
   name  = %q
   type  = "TXT"
   value = "v=spf1 -all"
+}
+`, testAccAPIToken(), zone, zone)
+}
+
+func testAccRecordAAAA(zone string) string {
+	return fmt.Sprintf(`
+provider "technitium" {
+  server_url = "http://127.0.0.1:5380"
+  api_token  = "%s"
+}
+
+resource "technitium_zone" "test" {
+  name = %q
+  type = "Primary"
+  dnssec { enabled = false }
+}
+
+resource "technitium_record" "ipv6" {
+  zone  = technitium_zone.test.name
+  name  = "www.%s"
+  type  = "AAAA"
+  value = "2001:db8::1"
+}
+`, testAccAPIToken(), zone, zone)
+}
+
+func testAccRecordMX(zone string) string {
+	return fmt.Sprintf(`
+provider "technitium" {
+  server_url = "http://127.0.0.1:5380"
+  api_token  = "%s"
+}
+
+resource "technitium_zone" "test" {
+  name = %q
+  type = "Primary"
+  dnssec { enabled = false }
+}
+
+resource "technitium_record" "mail" {
+  zone     = technitium_zone.test.name
+  name     = %q
+  type     = "MX"
+  value    = "mail.%s"
+  priority = 10
+}
+`, testAccAPIToken(), zone, zone, zone)
+}
+
+func testAccRecordSRV(zone string) string {
+	return fmt.Sprintf(`
+provider "technitium" {
+  server_url = "http://127.0.0.1:5380"
+  api_token  = "%s"
+}
+
+resource "technitium_zone" "test" {
+  name = %q
+  type = "Primary"
+  dnssec { enabled = false }
+}
+
+resource "technitium_record" "sip" {
+  zone     = technitium_zone.test.name
+  name     = "_sip._tcp.%s"
+  type     = "SRV"
+  value    = "sip.%s"
+  priority = 10
+  weight   = 60
+  port     = 5060
+}
+`, testAccAPIToken(), zone, zone, zone)
+}
+
+func testAccRecordNS(zone string) string {
+	return fmt.Sprintf(`
+provider "technitium" {
+  server_url = "http://127.0.0.1:5380"
+  api_token  = "%s"
+}
+
+resource "technitium_zone" "test" {
+  name = %q
+  type = "Primary"
+  dnssec { enabled = false }
+}
+
+resource "technitium_record" "ns" {
+  zone  = technitium_zone.test.name
+  name  = %q
+  type  = "NS"
+  value = "ns2.%s"
+}
+`, testAccAPIToken(), zone, zone, zone)
+}
+
+func testAccRecordCAA(zone string) string {
+	return fmt.Sprintf(`
+provider "technitium" {
+  server_url = "http://127.0.0.1:5380"
+  api_token  = "%s"
+}
+
+resource "technitium_zone" "test" {
+  name = %q
+  type = "Primary"
+  dnssec { enabled = false }
+}
+
+resource "technitium_record" "caa" {
+  zone      = technitium_zone.test.name
+  name      = %q
+  type      = "CAA"
+  value     = "letsencrypt.org"
+  caa_flags = 0
+  caa_tag   = "issue"
 }
 `, testAccAPIToken(), zone, zone)
 }

@@ -42,6 +42,8 @@ type RecordResourceModel struct {
 	Priority types.Int64  `tfsdk:"priority"`
 	Weight   types.Int64  `tfsdk:"weight"`
 	Port     types.Int64  `tfsdk:"port"`
+	CAAFlags types.Int64  `tfsdk:"caa_flags"`
+	CAATag   types.String `tfsdk:"caa_tag"`
 	Overwrite types.Bool  `tfsdk:"overwrite"`
 	// Computed
 	LastModified types.String `tfsdk:"last_modified"`
@@ -103,6 +105,14 @@ func (r *RecordResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 			},
 			"port": schema.Int64Attribute{
 				Description: "Port for SRV records.",
+				Optional:    true,
+			},
+			"caa_flags": schema.Int64Attribute{
+				Description: "CAA record flags (0 = non-critical, 128 = critical). Required for CAA records.",
+				Optional:    true,
+			},
+			"caa_tag": schema.StringAttribute{
+				Description: "CAA record tag: issue, issuewild, iodef. Required for CAA records.",
 				Optional:    true,
 			},
 			"overwrite": schema.BoolAttribute{
@@ -194,6 +204,13 @@ func (r *RecordResource) Read(ctx context.Context, req resource.ReadRequest, res
 			}
 			if priority, ok := rec.RData["priority"]; ok {
 				state.Priority = types.Int64Value(int64(toFloat64(priority)))
+			}
+			// CAA fields
+			if flags, ok := rec.RData["flags"]; ok {
+				state.CAAFlags = types.Int64Value(int64(toFloat64(flags)))
+			}
+			if tag, ok := rec.RData["tag"]; ok {
+				state.CAATag = types.StringValue(fmt.Sprintf("%v", tag))
 			}
 
 			found = true
@@ -311,11 +328,16 @@ func (r *RecordResource) buildAddParams(model *RecordResourceModel) map[string]s
 
 	// CAA flags and tag
 	if recordType == "CAA" {
-		// For CAA, value is the actual value, and we need flags and tag
-		// The user sets these through the value field in a structured way
-		// or via separate fields if we extend later
-		params["flags"] = "0"
-		params["tag"] = "issue"
+		if !model.CAAFlags.IsNull() {
+			params["flags"] = fmt.Sprintf("%d", model.CAAFlags.ValueInt64())
+		} else {
+			params["flags"] = "0"
+		}
+		if !model.CAATag.IsNull() && model.CAATag.ValueString() != "" {
+			params["tag"] = model.CAATag.ValueString()
+		} else {
+			params["tag"] = "issue"
+		}
 	}
 
 	return params
@@ -388,6 +410,23 @@ func (r *RecordResource) buildUpdateParams(state, plan *RecordResourceModel) map
 		if oldValue != newValue {
 			params["newNameServer"] = newValue
 		}
+	case "CAA":
+		params["value"] = oldValue
+		if oldValue != newValue {
+			params["newValue"] = newValue
+		}
+		if !state.CAAFlags.IsNull() {
+			params["flags"] = fmt.Sprintf("%d", state.CAAFlags.ValueInt64())
+		}
+		if !plan.CAAFlags.IsNull() {
+			params["newFlags"] = fmt.Sprintf("%d", plan.CAAFlags.ValueInt64())
+		}
+		if !state.CAATag.IsNull() {
+			params["tag"] = state.CAATag.ValueString()
+		}
+		if !plan.CAATag.IsNull() {
+			params["newTag"] = plan.CAATag.ValueString()
+		}
 	default:
 		params[valueParam] = newValue
 	}
@@ -416,6 +455,15 @@ func (r *RecordResource) buildDeleteParams(model *RecordResourceModel) map[strin
 		}
 		if !model.Port.IsNull() {
 			params["port"] = fmt.Sprintf("%d", model.Port.ValueInt64())
+		}
+	}
+
+	if recordType == "CAA" {
+		if !model.CAAFlags.IsNull() {
+			params["flags"] = fmt.Sprintf("%d", model.CAAFlags.ValueInt64())
+		}
+		if !model.CAATag.IsNull() && model.CAATag.ValueString() != "" {
+			params["tag"] = model.CAATag.ValueString()
 		}
 	}
 

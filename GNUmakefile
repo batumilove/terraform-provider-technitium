@@ -3,8 +3,14 @@ default: build
 build:
 	go build -v ./...
 
+build-fips:
+	GOEXPERIMENT=boringcrypto go build -v ./...
+
 test:
 	go test -v ./... -count=1
+
+test-fips:
+	GOEXPERIMENT=boringcrypto go test -v ./... -count=1
 
 testacc:
 	TF_ACC=1 go test -v ./... -count=1 -timeout 120m
@@ -27,4 +33,4 @@ lint:
 install:
 	go build -o ~/.terraform.d/plugins/registry.terraform.io/darkhonor/technitium/0.0.1/$$(go env GOOS)_$$(go env GOARCH)/terraform-provider-technitium
 
-.PHONY: build test testacc testacc-up testacc-down generate lint install
+.PHONY: build build-fips test test-fips testacc testacc-up testacc-down generate lint install

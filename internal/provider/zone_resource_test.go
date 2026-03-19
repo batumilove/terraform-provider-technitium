@@ -130,6 +130,28 @@ func TestAccZoneResource_ZoneTransferTsigKeys(t *testing.T) {
 	})
 }
 
+func TestAccZoneResource_ZoneTransferTsigKeys_Clear(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			// Step 1: Create zone with TSIG key
+			{
+				Config: testAccZoneResourceWithTsigKeys("acc-tsig-clear.example.com"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("technitium_zone.tsig", "zone_transfer_tsig_key_names.#", "1"),
+				),
+			},
+			// Step 2: Remove TSIG keys
+			{
+				Config: testAccZoneResourceNoTsigKeys("acc-tsig-clear.example.com"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("technitium_zone.tsig", "zone_transfer_tsig_key_names.#", "0"),
+				),
+			},
+		},
+	})
+}
+
 func TestAccZoneResource_PrimaryTsigKeyOnPrimaryZone_Rejected(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -239,6 +261,31 @@ resource "technitium_zone" "tsig" {
   type = "Primary"
 
   zone_transfer_tsig_key_names = [technitium_tsig_key.xfer.key_name]
+
+  dnssec {
+    enabled = false
+  }
+}
+`, testAccAPIToken(), zoneName)
+}
+
+func testAccZoneResourceNoTsigKeys(zoneName string) string {
+	return fmt.Sprintf(`
+provider "technitium" {
+  server_url = "http://127.0.0.1:5380"
+  api_token  = "%s"
+}
+
+resource "technitium_tsig_key" "xfer" {
+  key_name  = "acc-xfer-key.example.com"
+  algorithm = "hmac-sha256"
+}
+
+resource "technitium_zone" "tsig" {
+  name = %q
+  type = "Primary"
+
+  zone_transfer_tsig_key_names = []
 
   dnssec {
     enabled = false

@@ -9,6 +9,7 @@ import (
 	"os"
 
 	"github.com/darkhonor/terraform-provider-technitium/internal/client"
+	"github.com/darkhonor/terraform-provider-technitium/internal/provider/validators"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
@@ -40,6 +41,8 @@ type TechnitiumProviderModel struct {
 type STIGComplianceModel struct {
 	Enabled        types.Bool           `tfsdk:"enabled"`
 	NSS            types.Bool           `tfsdk:"nss"`
+	Enforcement    types.String         `tfsdk:"enforcement"`
+	Suppress       types.List           `tfsdk:"suppress"`
 	Categorization *CategorizationModel `tfsdk:"categorization"`
 }
 
@@ -57,6 +60,7 @@ type TechnitiumProviderData struct {
 	STIGEnabled    bool
 	NSS            bool
 	Categorization Categorization
+	STIGEngine     *validators.Engine // nil when STIG disabled
 }
 
 // Categorization holds the resolved C/I/A levels.
@@ -109,6 +113,15 @@ func (p *TechnitiumProvider) Schema(_ context.Context, _ provider.SchemaRequest,
 					"nss": schema.BoolAttribute{
 						Description: "National Security System mode — requires full CNSSI 1253 categorization.",
 						Optional:    true,
+					},
+					"enforcement": schema.StringAttribute{
+						Description: "STIG enforcement policy: strict (errors block apply), warn (warnings only), silent (suppress all). Default: strict.",
+						Optional:    true,
+					},
+					"suppress": schema.ListAttribute{
+						Description: "List of DNS-REQ-XXX requirement IDs to suppress. Suppressed findings emit warnings instead of errors.",
+						Optional:    true,
+						ElementType: types.StringType,
 					},
 				},
 				Blocks: map[string]schema.Block{
@@ -206,6 +219,39 @@ func (p *TechnitiumProvider) Configure(ctx context.Context, req provider.Configu
 			resp.Diagnostics.AddError("Missing categorization",
 				"categorization block is required when nss = true.")
 			return
+		} else if providerData.STIGEnabled && config.STIGCompliance.Categorization == nil {
+			resp.Diagnostics.AddError("Missing categorization",
+				"categorization block is required when stig_compliance is enabled.")
+			return
+		}
+
+		// Parse enforcement (default: strict)
+		enforcement := "strict"
+		if !config.STIGCompliance.Enforcement.IsNull() && config.STIGCompliance.Enforcement.ValueString() != "" {
+			enforcement = config.STIGCompliance.Enforcement.ValueString()
+			enfDiags := validateEnforcement(enforcement)
+			resp.Diagnostics.Append(enfDiags...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+		}
+
+		// Parse suppress list and validate IDs
+		var suppressions []string
+		if !config.STIGCompliance.Suppress.IsNull() {
+			var rawSuppress []types.String
+			resp.Diagnostics.Append(config.STIGCompliance.Suppress.ElementsAs(ctx, &rawSuppress, false)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			for _, s := range rawSuppress {
+				suppressions = append(suppressions, s.ValueString())
+			}
+			supDiags := validateSuppressIDs(suppressions)
+			resp.Diagnostics.Append(supDiags...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
 		}
 
 		// STIG warning for skip_tls_verify
@@ -213,6 +259,26 @@ func (p *TechnitiumProvider) Configure(ctx context.Context, req provider.Configu
 			resp.Diagnostics.AddWarning("STIG SC-8: TLS verification disabled",
 				"skip_tls_verify = true disables TLS certificate verification. "+
 					"This violates STIG requirement SC-8 (Transmission Confidentiality and Integrity).")
+		}
+
+		// Construct engine when STIG enabled
+		if providerData.STIGEnabled {
+			engine := validators.NewEngine(validators.EngineConfig{
+				Enabled:     true,
+				Enforcement: enforcement,
+				Suppressions: suppressions,
+				Categorization: validators.Categorization{
+					Confidentiality: providerData.Categorization.Confidentiality,
+					Integrity:       providerData.Categorization.Integrity,
+					Availability:    providerData.Categorization.Availability,
+				},
+				NSS: providerData.NSS,
+			})
+			engine.RegisterBindings(validators.ResourceZone, validators.ZoneBindings)
+			engine.RegisterBindings(validators.ResourceServerSettings, validators.ServerSettingsBindings)
+			engine.RegisterBindings(validators.ResourceRecord, validators.RecordBindings)
+			engine.RegisterBindings(validators.ResourceTSIGKey, validators.TSIGKeyBindings)
+			providerData.STIGEngine = engine
 		}
 	}
 
@@ -323,4 +389,33 @@ func validateCategorization(cat *CategorizationModel, nss bool) (Categorization,
 	}
 
 	return result, diags
+}
+
+// validateEnforcement checks the enforcement value is valid.
+func validateEnforcement(enforcement string) diag.Diagnostics {
+	var diags diag.Diagnostics
+	switch enforcement {
+	case "strict", "warn", "silent":
+		// valid
+	default:
+		diags.AddError("Invalid enforcement level",
+			fmt.Sprintf("enforcement must be one of: strict, warn, silent. Got: %q", enforcement))
+	}
+	return diags
+}
+
+// validateSuppressIDs checks all suppression IDs are valid DNS-REQ-XXX IDs.
+func validateSuppressIDs(ids []string) diag.Diagnostics {
+	var diags diag.Diagnostics
+	validIDs := make(map[string]bool)
+	for _, id := range validators.AllRequirementIDs() {
+		validIDs[id] = true
+	}
+	for _, id := range ids {
+		if !validIDs[id] {
+			diags.AddError("Invalid suppression ID",
+				fmt.Sprintf("suppress contains unknown requirement ID: %q. Valid IDs are DNS-REQ-001 through DNS-REQ-027.", id))
+		}
+	}
+	return diags
 }

@@ -149,3 +149,52 @@ func TestValidateCategorization_NonNSSIndividual(t *testing.T) {
 		t.Error("individual objectives not preserved correctly")
 	}
 }
+
+func TestValidateEnforcement_Strict(t *testing.T) {
+	diags := validateEnforcement("strict")
+	if diags.HasError() {
+		t.Errorf("unexpected error for 'strict'")
+	}
+}
+
+func TestValidateEnforcement_Warn(t *testing.T) {
+	diags := validateEnforcement("warn")
+	if diags.HasError() {
+		t.Errorf("unexpected error for 'warn'")
+	}
+}
+
+func TestValidateEnforcement_Silent(t *testing.T) {
+	diags := validateEnforcement("silent")
+	if diags.HasError() {
+		t.Errorf("unexpected error for 'silent'")
+	}
+}
+
+func TestValidateEnforcement_Invalid(t *testing.T) {
+	diags := validateEnforcement("yolo")
+	if !diags.HasError() {
+		t.Error("expected error for invalid enforcement")
+	}
+}
+
+func TestValidateSuppressIDs_Valid(t *testing.T) {
+	diags := validateSuppressIDs([]string{"DNS-REQ-001", "DNS-REQ-015"})
+	if diags.HasError() {
+		t.Errorf("unexpected error for valid IDs")
+	}
+}
+
+func TestValidateSuppressIDs_Invalid(t *testing.T) {
+	diags := validateSuppressIDs([]string{"DNS-REQ-999"})
+	if !diags.HasError() {
+		t.Error("expected error for invalid ID")
+	}
+}
+
+func TestValidateSuppressIDs_Empty(t *testing.T) {
+	diags := validateSuppressIDs([]string{})
+	if diags.HasError() {
+		t.Errorf("unexpected error for empty list")
+	}
+}

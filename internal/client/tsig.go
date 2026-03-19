@@ -1,0 +1,127 @@
+// Copyright (c) 2026 Alex Ackerman
+// SPDX-License-Identifier: MPL-2.0
+
+package client
+
+import (
+	"errors"
+	"fmt"
+	"strings"
+)
+
+// TSIGKey represents a TSIG key from the Technitium API.
+type TSIGKey struct {
+	KeyName       string `json:"keyName"`
+	SharedSecret  string `json:"sharedSecret"`
+	AlgorithmName string `json:"algorithmName"`
+}
+
+// ErrTSIGKeyNotFound is returned when a TSIG key does not exist.
+var ErrTSIGKeyNotFound = errors.New("TSIG key not found")
+
+// TSIGKeyList returns all TSIG keys from server settings.
+func (c *Client) TSIGKeyList() ([]TSIGKey, error) {
+	settings, err := c.SettingsGet()
+	if err != nil {
+		return nil, fmt.Errorf("listing TSIG keys: %w", err)
+	}
+	if settings.TsigKeys == nil {
+		return []TSIGKey{}, nil
+	}
+	return settings.TsigKeys, nil
+}
+
+// TSIGKeyGet returns a single TSIG key by name.
+func (c *Client) TSIGKeyGet(keyName string) (*TSIGKey, error) {
+	keys, err := c.TSIGKeyList()
+	if err != nil {
+		return nil, err
+	}
+	for _, k := range keys {
+		if strings.EqualFold(k.KeyName, keyName) {
+			return &k, nil
+		}
+	}
+	return nil, ErrTSIGKeyNotFound
+}
+
+// writeTSIGKeys encodes the key list as pipe-delimited and writes to settings.
+// Format: name1|secret1|algo1|name2|secret2|algo2
+// Empty list sends tsigKeys=false to clear all keys.
+func (c *Client) writeTSIGKeys(keys []TSIGKey) error {
+	value := "false"
+	if len(keys) > 0 {
+		parts := make([]string, 0, len(keys)*3)
+		for _, k := range keys {
+			parts = append(parts, k.KeyName, k.SharedSecret, k.AlgorithmName)
+		}
+		value = strings.Join(parts, "|")
+	}
+	return c.SettingsSet(map[string]string{"tsigKeys": value})
+}
+
+// TSIGKeyCreate adds a new TSIG key. Returns error if key name already exists.
+func (c *Client) TSIGKeyCreate(key TSIGKey) error {
+	keys, err := c.TSIGKeyList()
+	if err != nil {
+		return fmt.Errorf("creating TSIG key: %w", err)
+	}
+
+	// Check for duplicate
+	for _, k := range keys {
+		if strings.EqualFold(k.KeyName, key.KeyName) {
+			return fmt.Errorf("TSIG key %q already exists", key.KeyName)
+		}
+	}
+
+	keys = append(keys, key)
+	if err := c.writeTSIGKeys(keys); err != nil {
+		return fmt.Errorf("creating TSIG key %q: %w", key.KeyName, err)
+	}
+	return nil
+}
+
+// TSIGKeyUpdate replaces an existing TSIG key by name.
+func (c *Client) TSIGKeyUpdate(key TSIGKey) error {
+	keys, err := c.TSIGKeyList()
+	if err != nil {
+		return fmt.Errorf("updating TSIG key: %w", err)
+	}
+
+	found := false
+	for i, k := range keys {
+		if strings.EqualFold(k.KeyName, key.KeyName) {
+			keys[i] = key
+			found = true
+			break
+		}
+	}
+	if !found {
+		return ErrTSIGKeyNotFound
+	}
+
+	if err := c.writeTSIGKeys(keys); err != nil {
+		return fmt.Errorf("updating TSIG key %q: %w", key.KeyName, err)
+	}
+	return nil
+}
+
+// TSIGKeyDelete removes a TSIG key by name. Idempotent — succeeds silently if key not found.
+func (c *Client) TSIGKeyDelete(keyName string) error {
+	keys, err := c.TSIGKeyList()
+	if err != nil {
+		return fmt.Errorf("deleting TSIG key: %w", err)
+	}
+
+	filtered := make([]TSIGKey, 0, len(keys))
+	for _, k := range keys {
+		if !strings.EqualFold(k.KeyName, keyName) {
+			filtered = append(filtered, k)
+		}
+	}
+
+	if err := c.writeTSIGKeys(filtered); err != nil {
+		return fmt.Errorf("deleting TSIG key %q: %w", keyName, err)
+	}
+	return nil
+}

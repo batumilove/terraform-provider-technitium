@@ -33,6 +33,7 @@ type ServerSettings struct {
 	UdpPayloadSize             int      `json:"udpPayloadSize"`
 	CacheMinimumRecordTtl      int      `json:"cacheMinimumRecordTtl"`
 	CacheMaximumRecordTtl      int      `json:"cacheMaximumRecordTtl"`
+	TsigKeys                   []TSIGKey `json:"tsigKeys"`
 }
 
 // SettingsGet returns the current server settings.

@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"testing"
 
+	"github.com/darkhonor/terraform-provider-technitium/internal/client"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
@@ -440,6 +441,236 @@ data "technitium_zone" "test" {
   name = technitium_zone.seed.name
 }
 `, testAccAPIToken(), name)
+}
+
+// testAccDirectClient creates a direct API client for test setup operations
+// that need to bypass Terraform resource lifecycle.
+func testAccDirectClient(t *testing.T) *client.Client {
+	t.Helper()
+	c, err := client.NewClient("http://127.0.0.1:5380", testAccAPIToken(), false)
+	if err != nil {
+		t.Fatalf("failed to create direct API client: %s", err)
+	}
+	return c
+}
+
+// testAccZoneResourceNSSTsigKey creates both a TSIG key and zone with NSS enabled.
+// Only works for NSS-compliant algorithms (sha256, sha384, sha512).
+func testAccZoneResourceNSSTsigKey(zoneName, keyName, algo string) string {
+	return fmt.Sprintf(`
+provider "technitium" {
+  server_url = "http://127.0.0.1:5380"
+  api_token  = "%s"
+
+  stig_compliance {
+    enabled = true
+    nss     = true
+
+    categorization {
+      confidentiality = "high"
+      integrity       = "high"
+      availability    = "moderate"
+    }
+  }
+}
+
+resource "technitium_tsig_key" "test" {
+  key_name  = %q
+  algorithm = %q
+}
+
+resource "technitium_zone" "nss" {
+  name = %q
+  type = "Primary"
+
+  zone_transfer_tsig_key_names = [technitium_tsig_key.test.key_name]
+
+  dnssec {
+    enabled   = true
+    algorithm = "ECDSA"
+    curve     = "P384"
+    nx_proof  = "NSEC3"
+  }
+}
+`, testAccAPIToken(), keyName, algo, zoneName)
+}
+
+// testAccZoneOnlyNSSReferencingKey creates ONLY a zone (not the key) with NSS enabled,
+// referencing a pre-existing TSIG key by name string literal.
+func testAccZoneOnlyNSSReferencingKey(zoneName, keyName string) string {
+	return fmt.Sprintf(`
+provider "technitium" {
+  server_url = "http://127.0.0.1:5380"
+  api_token  = "%s"
+
+  stig_compliance {
+    enabled = true
+    nss     = true
+
+    categorization {
+      confidentiality = "high"
+      integrity       = "high"
+      availability    = "moderate"
+    }
+  }
+}
+
+resource "technitium_zone" "nss" {
+  name = %q
+  type = "Primary"
+
+  zone_transfer_tsig_key_names = [%q]
+
+  dnssec {
+    enabled   = true
+    algorithm = "ECDSA"
+    curve     = "P384"
+    nx_proof  = "NSEC3"
+  }
+}
+`, testAccAPIToken(), zoneName, keyName)
+}
+
+func TestAccZoneResource_NSS_TsigKeyCompliant_sha256(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccZoneResourceNSSTsigKey("acc-nss-ztsig-sha256.example.com", "acc-nss-zk-sha256.example.com", "hmac-sha256"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("technitium_zone.nss", "zone_transfer_tsig_key_names.#", "1"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccZoneResource_NSS_TsigKeyCompliant_sha384(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccZoneResourceNSSTsigKey("acc-nss-ztsig-sha384.example.com", "acc-nss-zk-sha384.example.com", "hmac-sha384"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("technitium_zone.nss", "zone_transfer_tsig_key_names.#", "1"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccZoneResource_NSS_TsigKeyCompliant_sha512(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccZoneResourceNSSTsigKey("acc-nss-ztsig-sha512.example.com", "acc-nss-zk-sha512.example.com", "hmac-sha512"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("technitium_zone.nss", "zone_transfer_tsig_key_names.#", "1"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccZoneResource_NSS_TsigKeyNonCompliant_md5(t *testing.T) {
+	c := testAccDirectClient(t)
+	keyName := "acc-nss-zk-md5.example.com"
+	c.TSIGKeyDelete(keyName) // clean up any stale key from prior runs
+	if err := c.TSIGKeyCreate(client.TSIGKey{KeyName: keyName, AlgorithmName: "hmac-md5.sig-alg.reg.int"}); err != nil {
+		t.Fatalf("failed to pre-create TSIG key: %s", err)
+	}
+	t.Cleanup(func() { c.TSIGKeyDelete(keyName) })
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config:      testAccZoneOnlyNSSReferencingKey("acc-nss-ztsig-md5.example.com", keyName),
+				ExpectError: regexp.MustCompile(`TSIG key does not meet NSS`),
+			},
+		},
+	})
+}
+
+func TestAccZoneResource_NSS_TsigKeyNonCompliant_sha1(t *testing.T) {
+	c := testAccDirectClient(t)
+	keyName := "acc-nss-zk-sha1.example.com"
+	c.TSIGKeyDelete(keyName) // clean up any stale key from prior runs
+	if err := c.TSIGKeyCreate(client.TSIGKey{KeyName: keyName, AlgorithmName: "hmac-sha1"}); err != nil {
+		t.Fatalf("failed to pre-create TSIG key: %s", err)
+	}
+	t.Cleanup(func() { c.TSIGKeyDelete(keyName) })
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config:      testAccZoneOnlyNSSReferencingKey("acc-nss-ztsig-sha1.example.com", keyName),
+				ExpectError: regexp.MustCompile(`TSIG key does not meet NSS`),
+			},
+		},
+	})
+}
+
+func TestAccZoneResource_NSS_TsigKeyNonCompliant_sha256_128(t *testing.T) {
+	c := testAccDirectClient(t)
+	keyName := "acc-nss-zk-sha256-128.example.com"
+	c.TSIGKeyDelete(keyName) // clean up any stale key from prior runs
+	if err := c.TSIGKeyCreate(client.TSIGKey{KeyName: keyName, AlgorithmName: "hmac-sha256-128"}); err != nil {
+		t.Fatalf("failed to pre-create TSIG key: %s", err)
+	}
+	t.Cleanup(func() { c.TSIGKeyDelete(keyName) })
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config:      testAccZoneOnlyNSSReferencingKey("acc-nss-ztsig-sha256-128.example.com", keyName),
+				ExpectError: regexp.MustCompile(`TSIG key does not meet NSS`),
+			},
+		},
+	})
+}
+
+func TestAccZoneResource_NSS_TsigKeyNonCompliant_sha384_192(t *testing.T) {
+	c := testAccDirectClient(t)
+	keyName := "acc-nss-zk-sha384-192.example.com"
+	c.TSIGKeyDelete(keyName) // clean up any stale key from prior runs
+	if err := c.TSIGKeyCreate(client.TSIGKey{KeyName: keyName, AlgorithmName: "hmac-sha384-192"}); err != nil {
+		t.Fatalf("failed to pre-create TSIG key: %s", err)
+	}
+	t.Cleanup(func() { c.TSIGKeyDelete(keyName) })
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config:      testAccZoneOnlyNSSReferencingKey("acc-nss-ztsig-sha384-192.example.com", keyName),
+				ExpectError: regexp.MustCompile(`TSIG key does not meet NSS`),
+			},
+		},
+	})
+}
+
+func TestAccZoneResource_NSS_TsigKeyNonCompliant_sha512_256(t *testing.T) {
+	c := testAccDirectClient(t)
+	keyName := "acc-nss-zk-sha512-256.example.com"
+	c.TSIGKeyDelete(keyName) // clean up any stale key from prior runs
+	if err := c.TSIGKeyCreate(client.TSIGKey{KeyName: keyName, AlgorithmName: "hmac-sha512-256"}); err != nil {
+		t.Fatalf("failed to pre-create TSIG key: %s", err)
+	}
+	t.Cleanup(func() { c.TSIGKeyDelete(keyName) })
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config:      testAccZoneOnlyNSSReferencingKey("acc-nss-ztsig-sha512-256.example.com", keyName),
+				ExpectError: regexp.MustCompile(`TSIG key does not meet NSS`),
+			},
+		},
+	})
 }
 
 func testAccAPIToken() string {

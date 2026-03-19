@@ -120,6 +120,11 @@ func (c *Client) TSIGKeyDelete(keyName string) error {
 		}
 	}
 
+	// Key was not present — nothing to do (idempotent)
+	if len(filtered) == len(keys) {
+		return nil
+	}
+
 	if err := c.writeTSIGKeys(filtered); err != nil {
 		return fmt.Errorf("deleting TSIG key %q: %w", keyName, err)
 	}

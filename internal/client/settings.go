@@ -9,6 +9,22 @@ import (
 	"net/url"
 )
 
+// Blocking type constants — valid values for the blockingType server setting.
+const (
+	BlockingTypeNxDomain      = "NxDomain"
+	BlockingTypeAnyAddress    = "AnyAddress"
+	BlockingTypeTxtRecord     = "TxtRecord"
+	BlockingTypeCustomAddress = "CustomAddress"
+)
+
+// ValidBlockingTypes is the complete list of valid blocking type values.
+var ValidBlockingTypes = []string{
+	BlockingTypeNxDomain,
+	BlockingTypeAnyAddress,
+	BlockingTypeTxtRecord,
+	BlockingTypeCustomAddress,
+}
+
 // ServerSettings represents the Technitium server settings from the API.
 type ServerSettings struct {
 	Version                    string   `json:"version"`
@@ -22,8 +38,15 @@ type ServerSettings struct {
 	LogQueries                 bool     `json:"logQueries"`
 	LoggingType                string   `json:"loggingType"`
 	MaxLogFileDays             int      `json:"maxLogFileDays"`
-	EnableBlocking             bool     `json:"enableBlocking"`
-	ServeStale                 bool     `json:"serveStale"`
+	EnableBlocking              bool     `json:"enableBlocking"`
+	AllowTxtBlockingReport      bool     `json:"allowTxtBlockingReport"`
+	BlockingBypassList          []string `json:"blockingBypassList"`
+	BlockingType                string   `json:"blockingType"`
+	BlockingAnswerTTL           int      `json:"blockingAnswerTtl"`
+	CustomBlockingAddresses     []string `json:"customBlockingAddresses"`
+	BlockListUrls               []string `json:"blockListUrls"`
+	BlockListUpdateIntervalHours int     `json:"blockListUpdateIntervalHours"`
+	ServeStale                  bool     `json:"serveStale"`
 	Forwarders                 []string `json:"forwarders"`
 	ForwarderProtocol          string   `json:"forwarderProtocol"`
 	EnableDnsOverTls           bool     `json:"enableDnsOverTls"`

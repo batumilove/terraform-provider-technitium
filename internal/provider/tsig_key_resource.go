@@ -228,9 +228,9 @@ func (r *TSIGKeyResource) Update(ctx context.Context, req resource.UpdateRequest
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-func (r *TSIGKeyResource) Delete(_ context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+func (r *TSIGKeyResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var state TSIGKeyResourceModel
-	resp.Diagnostics.Append(req.State.Get(context.Background(), &state)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -241,7 +241,7 @@ func (r *TSIGKeyResource) Delete(_ context.Context, req resource.DeleteRequest, 
 }
 
 func (r *TSIGKeyResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("key_name"), req, resp)
-	// Also set ID to the key name
+	// Import by key_name — set both attributes explicitly
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("key_name"), req.ID)...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
 }

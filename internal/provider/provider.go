@@ -229,6 +229,7 @@ func (p *TechnitiumProvider) Resources(_ context.Context) []func() resource.Reso
 		NewBlockedZoneResource,
 		NewBlockedZonesResource,
 		NewAllowedZoneResource,
+		NewAllowedZonesResource,
 	}
 }
 

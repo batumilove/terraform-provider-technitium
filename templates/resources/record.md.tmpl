@@ -1,0 +1,76 @@
+---
+subcategory: ""
+page_title: "technitium_record Resource - Technitium DNS Server"
+description: |-
+  Manages a DNS record in a Technitium DNS zone. Supports A, AAAA, CNAME, MX, TXT, SRV,
+  PTR, NS, and CAA record types. Client-side validation ensures type/value compatibility
+  before API calls.
+---
+
+# technitium\_record (Resource)
+
+Manages a DNS record in a Technitium DNS zone. Supports A, AAAA, CNAME, MX, TXT, SRV, PTR, NS, and CAA record types. Client-side validation ensures type/value compatibility before API calls.
+
+-> The `overwrite` attribute controls whether this record replaces existing records of the same type at the same name. Default is `true`.
+
+## Example Usage
+
+### A Record
+
+{{tffile "examples/resources/technitium_record/resource.tf"}}
+
+### MX Record
+
+{{codefile "hcl" "examples/resources/technitium_record/mx-record.tf"}}
+
+### SRV Record
+
+{{codefile "hcl" "examples/resources/technitium_record/srv-record.tf"}}
+
+### CAA Record
+
+{{codefile "hcl" "examples/resources/technitium_record/caa-record.tf"}}
+
+### Additional Record Types
+
+{{codefile "hcl" "examples/resources/technitium_record/multiple-types.tf"}}
+
+## Argument Reference
+
+* `zone` - (Required, String) Parent zone name. (Forces replacement.)
+
+* `name` - (Required, String) FQDN for the record. (Forces replacement.)
+
+* `type` - (Required, String) Record type. Valid values: `A`, `AAAA`, `CNAME`, `MX`, `TXT`, `SRV`, `PTR`, `NS`, `CAA`. (Forces replacement.)
+
+* `value` - (Required, String) Record data.
+
+* `ttl` - (Optional, Integer) TTL in seconds. Default: `3600`.
+
+* `priority` - (Optional, Integer) Priority for MX and SRV records.
+
+* `weight` - (Optional, Integer) Weight for SRV records.
+
+* `port` - (Optional, Integer) Port for SRV records.
+
+* `caa_flags` - (Optional, Integer) CAA flags. `0` = non-critical, `128` = critical.
+
+* `caa_tag` - (Optional, String) CAA tag. Valid values: `issue`, `issuewild`, `iodef`.
+
+* `overwrite` - (Optional, Boolean) Replace existing record set. Default: `true`.
+
+## Attributes Reference
+
+In addition to the arguments above, the following computed attributes are exported:
+
+* `id` - Record identifier (zone/name/type composite key).
+
+* `last_modified` - Timestamp of last modification.
+
+## Import
+
+DNS records can be imported using the zone, name, and type separated by slashes.
+
+```shell
+terraform import technitium_record.web example.com/www.example.com/A
+```

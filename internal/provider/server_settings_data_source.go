@@ -133,7 +133,11 @@ func (d *ServerSettingsDataSource) Read(ctx context.Context, _ datasource.ReadRe
 		CacheMaximumRecordTtl:        types.Int64Value(int64(settings.CacheMaximumRecordTtl)),
 	}
 
-	// Lists
+	// Lists — initialize as null so readStringList handles empty vs null correctly
+	state.BlockingBypassList = types.ListNull(types.StringType)
+	state.CustomBlockingAddresses = types.ListNull(types.StringType)
+	state.BlockListUrls = types.ListNull(types.StringType)
+
 	readStringList(ctx, &state.BlockingBypassList, settings.BlockingBypassList)
 	readStringList(ctx, &state.CustomBlockingAddresses, settings.CustomBlockingAddresses)
 	readStringList(ctx, &state.BlockListUrls, settings.BlockListUrls)

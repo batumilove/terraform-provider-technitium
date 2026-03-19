@@ -452,9 +452,9 @@ func setStringList(ctx context.Context, params map[string]string, key string, va
 }
 
 func readStringList(ctx context.Context, target *types.List, source []string) {
-	// If the plan had null (user didn't set the attribute) and API returns empty,
-	// keep it null to avoid inconsistent result errors.
-	if target.IsNull() && len(source) == 0 {
+	// If the plan had null (user didn't set the attribute), keep it null
+	// regardless of what the API returns to avoid inconsistent result errors.
+	if target.IsNull() {
 		return
 	}
 	if source == nil {

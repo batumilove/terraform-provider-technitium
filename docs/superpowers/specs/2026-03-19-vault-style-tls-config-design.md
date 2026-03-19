@@ -208,7 +208,7 @@ All validators:
 | File | Change |
 |---|---|
 | `internal/provider/provider.go` | Add 4 schema attrs, env var fallbacks, build `ClientConfig`, updated `Configure()` diagnostics |
-| `internal/client/client.go` | `ClientConfig` struct, new `NewClient(cfg)`, TLS setup, `tls.Dial` probe, error classification |
+| `internal/client/client.go` | `ClientConfig` struct, new `NewClient(cfg)`, TLS setup, `Ping()`-based probe, error classification |
 | `internal/provider/validators/stig.go` | Add 3 new provider-level validator bindings |
 | `internal/provider/validators/stig_baselines_gen.go` | Add/update SC-8 requirement entries if needed |
 | `internal/provider/validators/stig_engine.go` | Add `TargetProvider`, `ProviderConfigAccessor`, `ValidateProvider()` method |

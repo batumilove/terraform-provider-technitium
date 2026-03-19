@@ -7,14 +7,18 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/darkhonor/terraform-provider-technitium/internal/client"
 	"github.com/darkhonor/terraform-provider-technitium/internal/provider/validators"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -34,6 +38,10 @@ type TechnitiumProviderModel struct {
 	ServerURL      types.String         `tfsdk:"server_url"`
 	APIToken       types.String         `tfsdk:"api_token"`
 	SkipTLSVerify  types.Bool           `tfsdk:"skip_tls_verify"`
+	CACertFile     types.String         `tfsdk:"ca_cert_file"`
+	CACertDir      types.String         `tfsdk:"ca_cert_dir"`
+	TLSServerName  types.String         `tfsdk:"tls_server_name"`
+	TLSMinVersion  types.String         `tfsdk:"tls_min_version"`
 	STIGCompliance *STIGComplianceModel `tfsdk:"stig_compliance"`
 }
 
@@ -100,6 +108,30 @@ func (p *TechnitiumProvider) Schema(_ context.Context, _ provider.SchemaRequest,
 			"skip_tls_verify": schema.BoolAttribute{
 				Description: "Skip TLS certificate verification. Generates STIG warning when stig_compliance is enabled (SC-8).",
 				Optional:    true,
+			},
+			"ca_cert_file": schema.StringAttribute{
+				Description: "Path to a PEM-encoded CA certificate file to validate the Technitium server's TLS certificate. " +
+					"May be set via the TECHNITIUM_CACERT environment variable.",
+				Optional: true,
+			},
+			"ca_cert_dir": schema.StringAttribute{
+				Description: "Path to a directory of PEM-encoded CA certificate files to validate the Technitium server's TLS certificate. " +
+					"Files that fail to parse are skipped. May be set via the TECHNITIUM_CAPATH environment variable.",
+				Optional: true,
+			},
+			"tls_server_name": schema.StringAttribute{
+				Description: "Name to use as the SNI host when connecting to the Technitium server via TLS. " +
+					"May be set via the TECHNITIUM_TLS_SERVER_NAME environment variable.",
+				Optional: true,
+			},
+			"tls_min_version": schema.StringAttribute{
+				Description: "Minimum TLS version to accept when connecting to the Technitium server. " +
+					"Valid values: \"1.2\", \"1.3\". Defaults to \"1.3\". " +
+					"May be set via the TECHNITIUM_TLS_MIN_VERSION environment variable.",
+				Optional: true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("1.2", "1.3"),
+				},
 			},
 		},
 		Blocks: map[string]schema.Block{
@@ -180,33 +212,40 @@ func (p *TechnitiumProvider) Configure(ctx context.Context, req provider.Configu
 		return
 	}
 
-	skipTLSVerify := false
+	// Resolve TLS configuration (HCL > env var > default)
+	var skipTLSPtr *bool
 	if !config.SkipTLSVerify.IsNull() {
-		skipTLSVerify = config.SkipTLSVerify.ValueBool()
+		v := config.SkipTLSVerify.ValueBool()
+		skipTLSPtr = &v
 	}
-
-	// Create API client
-	apiClient, err := client.NewClient(serverURL, apiToken, skipTLSVerify)
+	skipTLSVerify, err := resolveTLSBool(skipTLSPtr, "TECHNITIUM_SKIP_TLS_VERIFY", false)
 	if err != nil {
-		resp.Diagnostics.AddError("Failed to create API client", err.Error())
+		resp.Diagnostics.AddError("Invalid TLS configuration", err.Error())
 		return
 	}
 
-	// Verify connectivity
-	if err := apiClient.Ping(); err != nil {
-		resp.Diagnostics.AddError("Failed to connect to Technitium DNS Server",
-			fmt.Sprintf("Could not reach %s: %s", serverURL, err.Error()))
+	caCertFile := resolveTLSString(config.CACertFile.ValueString(), "TECHNITIUM_CACERT")
+	caCertDir := resolveTLSString(config.CACertDir.ValueString(), "TECHNITIUM_CAPATH")
+	tlsServerName := resolveTLSString(config.TLSServerName.ValueString(), "TECHNITIUM_TLS_SERVER_NAME")
+	tlsMinVersion, err := resolveTLSMinVersion(config.TLSMinVersion.ValueString(), "TECHNITIUM_TLS_MIN_VERSION", "1.3")
+	if err != nil {
+		resp.Diagnostics.AddError("Invalid TLS configuration", err.Error())
 		return
 	}
 
-	// Parse STIG compliance
-	providerData := &TechnitiumProviderData{
-		Client: apiClient,
+	// Extract STIG/NSS booleans before Ping for tiered diagnostics
+	var stigEnabled, nssEnabled bool
+	if config.STIGCompliance != nil {
+		stigEnabled = config.STIGCompliance.Enabled.ValueBool()
+		nssEnabled = config.STIGCompliance.NSS.ValueBool()
 	}
+
+	// Parse STIG compliance (before Ping so ValidateProvider fires first)
+	providerData := &TechnitiumProviderData{}
 
 	if config.STIGCompliance != nil {
-		providerData.STIGEnabled = config.STIGCompliance.Enabled.ValueBool()
-		providerData.NSS = config.STIGCompliance.NSS.ValueBool()
+		providerData.STIGEnabled = stigEnabled
+		providerData.NSS = nssEnabled
 
 		if config.STIGCompliance.Categorization != nil {
 			cat, diags := validateCategorization(config.STIGCompliance.Categorization, providerData.NSS)
@@ -254,14 +293,10 @@ func (p *TechnitiumProvider) Configure(ctx context.Context, req provider.Configu
 			}
 		}
 
-		// STIG warning for skip_tls_verify
-		if providerData.STIGEnabled && skipTLSVerify {
-			resp.Diagnostics.AddWarning("STIG SC-8: TLS verification disabled",
-				"skip_tls_verify = true disables TLS certificate verification. "+
-					"This violates STIG requirement SC-8 (Transmission Confidentiality and Integrity).")
-		}
-
-		// Construct engine when STIG enabled
+		// Construct engine when STIG enabled and run ValidateProvider before Ping.
+		// STIG validators catch HTTP URLs, skip_tls_verify=true, tls_min_version=1.2
+		// before any network call; Ping then fires with tiered TLS diagnostics if
+		// provider-level validation passes.
 		if providerData.STIGEnabled {
 			engine := validators.NewEngine(validators.EngineConfig{
 				Enabled:     true,
@@ -278,9 +313,52 @@ func (p *TechnitiumProvider) Configure(ctx context.Context, req provider.Configu
 			engine.RegisterBindings(validators.ResourceServerSettings, validators.ServerSettingsBindings)
 			engine.RegisterBindings(validators.ResourceRecord, validators.RecordBindings)
 			engine.RegisterBindings(validators.ResourceTSIGKey, validators.TSIGKeyBindings)
+			engine.RegisterBindings(validators.TargetProvider, validators.ProviderBindings)
 			providerData.STIGEngine = engine
+
+			providerAccessor := &providerConfigAccessor{
+				serverURL:     serverURL,
+				skipTLSVerify: skipTLSVerify,
+				tlsMinVersion: tlsMinVersion,
+			}
+			engine.ValidateProvider(ctx, providerAccessor, &resp.Diagnostics)
+			if resp.Diagnostics.HasError() {
+				return
+			}
 		}
 	}
+
+	// Create API client
+	apiClient, err := client.NewClient(client.ClientConfig{
+		BaseURL:       serverURL,
+		Token:         apiToken,
+		SkipTLSVerify: skipTLSVerify,
+		CACertFile:    caCertFile,
+		CACertDir:     caCertDir,
+		TLSServerName: tlsServerName,
+		TLSMinVersion: tlsMinVersion,
+	})
+	if err != nil {
+		resp.Diagnostics.AddError("Failed to create API client", err.Error())
+		return
+	}
+
+	// Verify connectivity with tiered TLS error diagnostics
+	if err := apiClient.Ping(); err != nil {
+		isHTTPS := strings.HasPrefix(serverURL, "https://")
+		if isHTTPS {
+			tlsErr := client.ClassifyTLSError(err)
+			if diagnostic := buildTLSDiagnostic(tlsErr, serverURL, stigEnabled, nssEnabled); diagnostic != "" {
+				resp.Diagnostics.AddError("TLS connection failed", diagnostic)
+				return
+			}
+		}
+		resp.Diagnostics.AddError("Unable to connect to Technitium server",
+			fmt.Sprintf("Ping to %s failed: %s", serverURL, err.Error()))
+		return
+	}
+
+	providerData.Client = apiClient
 
 	resp.DataSourceData = providerData
 	resp.ResourceData = providerData
@@ -310,6 +388,45 @@ func (p *TechnitiumProvider) DataSources(_ context.Context) []func() datasource.
 		NewAllowedZoneDataSource,
 		NewAllowedZonesDataSource,
 	}
+}
+
+// resolveTLSString resolves a TLS string config value with HCL > env var > empty precedence.
+func resolveTLSString(hclValue, envVar string) string {
+	if hclValue != "" {
+		return hclValue
+	}
+	return os.Getenv(envVar)
+}
+
+// resolveTLSBool resolves a TLS bool config value with HCL > env var > default precedence.
+func resolveTLSBool(hclValue *bool, envVar string, defaultVal bool) (bool, error) {
+	if hclValue != nil {
+		return *hclValue, nil
+	}
+	envStr := os.Getenv(envVar)
+	if envStr != "" {
+		val, err := strconv.ParseBool(envStr)
+		if err != nil {
+			return false, fmt.Errorf("invalid value for %s: %q (expected true/false)", envVar, envStr)
+		}
+		return val, nil
+	}
+	return defaultVal, nil
+}
+
+// resolveTLSMinVersion resolves the TLS minimum version with HCL > env var > default precedence.
+func resolveTLSMinVersion(hclValue, envVar, defaultVal string) (string, error) {
+	result := hclValue
+	if result == "" {
+		result = os.Getenv(envVar)
+	}
+	if result == "" {
+		return defaultVal, nil
+	}
+	if result != "1.2" && result != "1.3" {
+		return "", fmt.Errorf("invalid value for %s: %q (must be \"1.2\" or \"1.3\")", envVar, result)
+	}
+	return result, nil
 }
 
 // validLevels are the allowed CNSSI 1253 / NIST 800-53 categorization levels.
@@ -404,6 +521,56 @@ func validateEnforcement(enforcement string) diag.Diagnostics {
 	return diags
 }
 
+// buildTLSDiagnostic produces a context-aware error message for TLS handshake
+// failures. The message is tailored to the user's STIG/NSS context: NSS users
+// receive only server-upgrade guidance, STIG users see CA cert options without
+// skip_tls_verify, and non-STIG users see all available remediation options.
+// Returns an empty string when the error is not TLS-related (caller falls
+// through to the generic connectivity error).
+func buildTLSDiagnostic(tlsErr client.TLSError, serverURL string, stigEnabled, nss bool) string {
+	switch tlsErr.Kind {
+	case client.TLSErrVersionMismatch:
+		msg := fmt.Sprintf("Connection to %s failed: TLS 1.3 not supported by the server.", serverURL)
+		if nss {
+			msg += " NSS environments require TLS 1.3 (SC-8). Upgrade the server's TLS configuration to support TLS 1.3."
+		} else if stigEnabled {
+			msg += " To resolve, either:\n" +
+				"  - Upgrade the server's TLS configuration to support TLS 1.3\n" +
+				"  - Set tls_min_version = \"1.2\" in the provider configuration (will generate STIG warning)"
+		} else {
+			msg += " To resolve, either:\n" +
+				"  - Upgrade the server's TLS configuration to support TLS 1.3\n" +
+				"  - Set tls_min_version = \"1.2\" in the provider configuration\n" +
+				"  - Set skip_tls_verify = true to bypass certificate verification entirely"
+		}
+		return msg
+	case client.TLSErrUnknownAuthority:
+		msg := fmt.Sprintf("Connection to %s failed: server certificate signed by unknown authority.", serverURL)
+		if nss || stigEnabled {
+			msg += " To resolve:\n" +
+				"  - Configure ca_cert_file or ca_cert_dir with the CA certificate that signed the server's certificate"
+		} else {
+			msg += " To resolve, either:\n" +
+				"  - Configure ca_cert_file or ca_cert_dir with the CA certificate that signed the server's certificate\n" +
+				"  - Set skip_tls_verify = true to bypass certificate verification entirely"
+		}
+		return msg
+	case client.TLSErrCertificateInvalid, client.TLSErrHostnameMismatch:
+		msg := fmt.Sprintf("Connection to %s failed: server certificate verification failed.", serverURL)
+		if nss || stigEnabled {
+			msg += " Verify the correct CA chain is configured in ca_cert_file or ca_cert_dir."
+		} else {
+			msg += " To resolve, either:\n" +
+				"  - Verify the correct CA chain is configured in ca_cert_file or ca_cert_dir\n" +
+				"  - Set skip_tls_verify = true to bypass certificate verification entirely"
+		}
+		return msg
+	case client.TLSErrNotTLS:
+		return ""
+	}
+	return ""
+}
+
 // validateSuppressIDs checks all suppression IDs are valid DNS-REQ-XXX IDs.
 func validateSuppressIDs(ids []string) diag.Diagnostics {
 	var diags diag.Diagnostics
@@ -414,8 +581,47 @@ func validateSuppressIDs(ids []string) diag.Diagnostics {
 	for _, id := range ids {
 		if !validIDs[id] {
 			diags.AddError("Invalid suppression ID",
-				fmt.Sprintf("suppress contains unknown requirement ID: %q. Valid IDs are DNS-REQ-001 through DNS-REQ-027.", id))
+				fmt.Sprintf("suppress contains unknown requirement ID: %q. Valid IDs are DNS-REQ-001 through DNS-REQ-%03d.", id, len(validators.DNSSecurityRequirements)))
 		}
 	}
 	return diags
 }
+
+// providerConfigAccessor adapts provider configuration for STIG validator access.
+type providerConfigAccessor struct {
+	serverURL     string
+	skipTLSVerify bool
+	tlsMinVersion string
+}
+
+func (a *providerConfigAccessor) GetString(path string) (string, bool) {
+	switch path {
+	case "server_url":
+		return a.serverURL, true
+	case "tls_min_version":
+		if a.tlsMinVersion == "" {
+			return "", false
+		}
+		return a.tlsMinVersion, true
+	default:
+		return "", false
+	}
+}
+
+func (a *providerConfigAccessor) GetBool(path string) (bool, bool) {
+	switch path {
+	case "skip_tls_verify":
+		// Always returns ok=true because the resolved value always exists
+		// after resolveTLSBool (explicit default). Default (false) is compliant.
+		return a.skipTLSVerify, true
+	default:
+		return false, false
+	}
+}
+
+func (a *providerConfigAccessor) GetStringList(path string) ([]string, bool) {
+	return nil, false
+}
+
+// Interface compliance assertion.
+var _ validators.ConfigAccessor = &providerConfigAccessor{}

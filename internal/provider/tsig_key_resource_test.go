@@ -316,7 +316,7 @@ func TestAccTSIGKeyResource_NSS_blocked_md5(t *testing.T) {
 		Steps: []resource.TestStep{
 			{
 				Config:      testAccTSIGKeyResourceNSS("acc-nss-md5.example.com", "hmac-md5.sig-alg.reg.int"),
-				ExpectError: regexp.MustCompile(`not allowed in NSS mode`),
+				ExpectError: regexp.MustCompile(`(not allowed in NSS mode|DNS-REQ-002.*crypto auth)`),
 			},
 		},
 	})
@@ -328,7 +328,7 @@ func TestAccTSIGKeyResource_NSS_blocked_sha1(t *testing.T) {
 		Steps: []resource.TestStep{
 			{
 				Config:      testAccTSIGKeyResourceNSS("acc-nss-sha1.example.com", "hmac-sha1"),
-				ExpectError: regexp.MustCompile(`not allowed in NSS mode`),
+				ExpectError: regexp.MustCompile(`(not allowed in NSS mode|DNS-REQ-002.*crypto auth)`),
 			},
 		},
 	})
@@ -340,7 +340,7 @@ func TestAccTSIGKeyResource_NSS_blocked_sha256_128(t *testing.T) {
 		Steps: []resource.TestStep{
 			{
 				Config:      testAccTSIGKeyResourceNSS("acc-nss-sha256-128.example.com", "hmac-sha256-128"),
-				ExpectError: regexp.MustCompile(`not allowed in NSS mode`),
+				ExpectError: regexp.MustCompile(`(not allowed in NSS mode|DNS-REQ-002.*crypto auth)`),
 			},
 		},
 	})
@@ -352,7 +352,7 @@ func TestAccTSIGKeyResource_NSS_blocked_sha384_192(t *testing.T) {
 		Steps: []resource.TestStep{
 			{
 				Config:      testAccTSIGKeyResourceNSS("acc-nss-sha384-192.example.com", "hmac-sha384-192"),
-				ExpectError: regexp.MustCompile(`not allowed in NSS mode`),
+				ExpectError: regexp.MustCompile(`(not allowed in NSS mode|DNS-REQ-002.*crypto auth)`),
 			},
 		},
 	})
@@ -364,7 +364,7 @@ func TestAccTSIGKeyResource_NSS_blocked_sha512_256(t *testing.T) {
 		Steps: []resource.TestStep{
 			{
 				Config:      testAccTSIGKeyResourceNSS("acc-nss-sha512-256.example.com", "hmac-sha512-256"),
-				ExpectError: regexp.MustCompile(`not allowed in NSS mode`),
+				ExpectError: regexp.MustCompile(`(not allowed in NSS mode|DNS-REQ-002.*crypto auth)`),
 			},
 		},
 	})

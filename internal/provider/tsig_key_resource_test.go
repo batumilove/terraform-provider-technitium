@@ -48,3 +48,206 @@ resource "technitium_tsig_key" "test" {
 }
 `, testAccAPIToken())
 }
+
+func TestAccTSIGKeyResource_generated_secret(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccTSIGKeyResourceGeneratedSecret(),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("technitium_tsig_key.gen", "key_name", "acc-gen.example.com"),
+					resource.TestCheckResourceAttr("technitium_tsig_key.gen", "algorithm", "hmac-sha256"),
+					resource.TestCheckResourceAttrSet("technitium_tsig_key.gen", "shared_secret"),
+				),
+			},
+		},
+	})
+}
+
+func testAccTSIGKeyResourceGeneratedSecret() string {
+	return fmt.Sprintf(`
+provider "technitium" {
+  server_url = "http://127.0.0.1:5380"
+  api_token  = "%s"
+}
+
+resource "technitium_tsig_key" "gen" {
+  key_name  = "acc-gen.example.com"
+  algorithm = "hmac-sha256"
+}
+`, testAccAPIToken())
+}
+
+func TestAccTSIGKeyResource_update_algorithm(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccTSIGKeyResourceWithAlgo("acc-updalgo.example.com", "hmac-sha256", "dGVzdHNlY3JldGtleWZvcmFjY2VwdGFuY2V0ZXN0cw=="),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("technitium_tsig_key.upd", "algorithm", "hmac-sha256"),
+				),
+			},
+			{
+				Config: testAccTSIGKeyResourceWithAlgo("acc-updalgo.example.com", "hmac-sha512", "dGVzdHNlY3JldGtleWZvcmFjY2VwdGFuY2V0ZXN0cw=="),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("technitium_tsig_key.upd", "algorithm", "hmac-sha512"),
+				),
+			},
+		},
+	})
+}
+
+func testAccTSIGKeyResourceWithAlgo(name, algo, secret string) string {
+	return fmt.Sprintf(`
+provider "technitium" {
+  server_url = "http://127.0.0.1:5380"
+  api_token  = "%s"
+}
+
+resource "technitium_tsig_key" "upd" {
+  key_name      = %q
+  algorithm     = %q
+  shared_secret = %q
+}
+`, testAccAPIToken(), name, algo, secret)
+}
+
+func TestAccTSIGKeyResource_update_secret(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccTSIGKeyResourceWithAlgo("acc-updsec.example.com", "hmac-sha256", "c2VjcmV0b25l"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("technitium_tsig_key.upd", "shared_secret", "c2VjcmV0b25l"),
+				),
+			},
+			{
+				Config: testAccTSIGKeyResourceWithAlgo("acc-updsec.example.com", "hmac-sha256", "c2VjcmV0dHdv"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("technitium_tsig_key.upd", "shared_secret", "c2VjcmV0dHdv"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccTSIGKeyResource_multiple_keys(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccTSIGKeyResourceMultiple(),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("technitium_tsig_key.key1", "key_name", "acc-multi1.example.com"),
+					resource.TestCheckResourceAttr("technitium_tsig_key.key2", "key_name", "acc-multi2.example.com"),
+					resource.TestCheckResourceAttr("technitium_tsig_key.key1", "algorithm", "hmac-sha256"),
+					resource.TestCheckResourceAttr("technitium_tsig_key.key2", "algorithm", "hmac-sha512"),
+				),
+			},
+		},
+	})
+}
+
+func testAccTSIGKeyResourceMultiple() string {
+	return fmt.Sprintf(`
+provider "technitium" {
+  server_url = "http://127.0.0.1:5380"
+  api_token  = "%s"
+}
+
+resource "technitium_tsig_key" "key1" {
+  key_name      = "acc-multi1.example.com"
+  algorithm     = "hmac-sha256"
+  shared_secret = "a2V5b25lc2VjcmV0"
+}
+
+resource "technitium_tsig_key" "key2" {
+  key_name      = "acc-multi2.example.com"
+  algorithm     = "hmac-sha512"
+  shared_secret = "a2V5dHdvc2VjcmV0"
+
+  depends_on = [technitium_tsig_key.key1]
+}
+`, testAccAPIToken())
+}
+
+func TestAccTSIGKeyResource_rename_forces_new(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccTSIGKeyResourceWithName("acc-rename-old.example.com"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("technitium_tsig_key.rename", "key_name", "acc-rename-old.example.com"),
+				),
+			},
+			{
+				Config: testAccTSIGKeyResourceWithName("acc-rename-new.example.com"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("technitium_tsig_key.rename", "key_name", "acc-rename-new.example.com"),
+				),
+			},
+		},
+	})
+}
+
+func testAccTSIGKeyResourceWithName(name string) string {
+	return fmt.Sprintf(`
+provider "technitium" {
+  server_url = "http://127.0.0.1:5380"
+  api_token  = "%s"
+}
+
+resource "technitium_tsig_key" "rename" {
+  key_name      = %q
+  algorithm     = "hmac-sha256"
+  shared_secret = "cmVuYW1ldGVzdHNlY3JldA=="
+}
+`, testAccAPIToken(), name)
+}
+
+func TestAccTSIGKeyResource_algorithms(t *testing.T) {
+	algorithms := []string{
+		"hmac-md5.sig-alg.reg.int",
+		"hmac-sha1",
+		"hmac-sha256",
+		"hmac-sha256-128",
+		"hmac-sha384",
+		"hmac-sha384-192",
+		"hmac-sha512",
+		"hmac-sha512-256",
+	}
+	for _, algo := range algorithms {
+		t.Run(algo, func(t *testing.T) {
+			resource.Test(t, resource.TestCase{
+				ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+				Steps: []resource.TestStep{
+					{
+						Config: testAccTSIGKeyResourceAlgorithm(algo),
+						Check: resource.ComposeAggregateTestCheckFunc(
+							resource.TestCheckResourceAttr("technitium_tsig_key.algo", "algorithm", algo),
+						),
+					},
+				},
+			})
+		})
+	}
+}
+
+func testAccTSIGKeyResourceAlgorithm(algo string) string {
+	keyName := fmt.Sprintf("acc-algo-%s.example.com", algo)
+	return fmt.Sprintf(`
+provider "technitium" {
+  server_url = "http://127.0.0.1:5380"
+  api_token  = "%s"
+}
+
+resource "technitium_tsig_key" "algo" {
+  key_name  = %q
+  algorithm = %q
+}
+`, testAccAPIToken(), keyName, algo)
+}

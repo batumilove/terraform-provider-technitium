@@ -32,11 +32,6 @@ var validTSIGAlgorithms = map[string]bool{
 	"hmac-sha512": true, "hmac-sha512-256": true,
 }
 
-// nssCompliantTSIGAlgorithms lists algorithms that meet FIPS 140-3/CNSSI 1253 requirements.
-var nssCompliantTSIGAlgorithms = map[string]bool{
-	"hmac-sha256": true, "hmac-sha384": true, "hmac-sha512": true,
-}
-
 func NewTSIGKeyResource() resource.Resource {
 	return &TSIGKeyResource{}
 }
@@ -130,7 +125,7 @@ func (r *TSIGKeyResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 
 	// NSS compliance check
 	if r.providerData != nil && r.providerData.NSS {
-		if !nssCompliantTSIGAlgorithms[algo] {
+		if !isNSSCompliantTSIGAlgorithm(algo) {
 			resp.Diagnostics.AddError("TSIG algorithm not allowed in NSS mode",
 				fmt.Sprintf("Algorithm %q does not meet FIPS 140-3/CNSSI 1253 requirements. Use hmac-sha256, hmac-sha384, or hmac-sha512.", algo))
 		}

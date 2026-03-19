@@ -493,11 +493,9 @@ func (r *ZoneResource) readZoneState(ctx context.Context, model *ZoneResourceMod
 			return fmt.Errorf("converting notify list")
 		}
 		model.Notify = notifyList
-	} else if !model.Notify.IsNull() {
-		// Server reports no notify IPs but user configured the attribute;
-		// preserve the plan value to avoid spurious diffs.
-		model.Notify = model.Notify
 	}
+	// When server reports no notify IPs but user configured the attribute,
+	// model.Notify retains its plan value — no action needed.
 
 	// Read allow_transfer IPs
 	if zone.ZoneTransfer == "UseSpecifiedNetworkACL" || zone.ZoneTransfer == "AllowZoneNameServersAndUseSpecifiedNetworkACL" {
@@ -506,11 +504,9 @@ func (r *ZoneResource) readZoneState(ctx context.Context, model *ZoneResourceMod
 			return fmt.Errorf("converting allow_transfer list")
 		}
 		model.AllowTransfer = transferList
-	} else if !model.AllowTransfer.IsNull() {
-		// Server reports no transfer ACL but user configured the attribute;
-		// preserve the plan value to avoid spurious diffs.
-		model.AllowTransfer = model.AllowTransfer
 	}
+	// When server reports no transfer ACL but user configured the attribute,
+	// model.AllowTransfer retains its plan value — no action needed.
 
 	// Read zone_transfer_tsig_key_names
 	readStringList(ctx, &model.ZoneTransferTsigKeyNames, zone.ZoneTransferTsigKeys)

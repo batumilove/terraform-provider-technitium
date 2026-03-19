@@ -190,7 +190,9 @@ func TestDoPost_Success(t *testing.T) {
 		if r.FormValue("setting") != "value1" {
 			t.Error("expected setting=value1 in form body")
 		}
-		json.NewEncoder(w).Encode(APIResponse{Status: "ok"})
+		if err := json.NewEncoder(w).Encode(APIResponse{Status: "ok"}); err != nil {
+			t.Fatalf("failed to encode response: %v", err)
+		}
 	})
 	defer ts.Close()
 
@@ -207,10 +209,12 @@ func TestDoPost_Success(t *testing.T) {
 
 func TestDoPost_APIError(t *testing.T) {
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(APIResponse{
+		if err := json.NewEncoder(w).Encode(APIResponse{
 			Status:       "error",
 			ErrorMessage: "access denied",
-		})
+		}); err != nil {
+			t.Fatalf("failed to encode response: %v", err)
+		}
 	})
 	defer ts.Close()
 
@@ -223,7 +227,9 @@ func TestDoPost_APIError(t *testing.T) {
 
 func TestPing_Success(t *testing.T) {
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(APIResponse{Status: "ok"})
+		if err := json.NewEncoder(w).Encode(APIResponse{Status: "ok"}); err != nil {
+			t.Fatalf("failed to encode response: %v", err)
+		}
 	})
 	defer ts.Close()
 
@@ -235,10 +241,12 @@ func TestPing_Success(t *testing.T) {
 
 func TestPing_InvalidToken(t *testing.T) {
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(APIResponse{
+		if err := json.NewEncoder(w).Encode(APIResponse{
 			Status:       "invalid-token",
 			ErrorMessage: "Invalid token.",
-		})
+		}); err != nil {
+			t.Fatalf("failed to encode response: %v", err)
+		}
 	})
 	defer ts.Close()
 

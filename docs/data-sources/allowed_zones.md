@@ -1,0 +1,31 @@
+---
+subcategory: ""
+page_title: "technitium_allowed_zones Data Source - Technitium DNS Server"
+description: |-
+  Retrieves the full set of domains in the Technitium DNS Server allowed zone
+  list. Use this data source to enumerate or count all allowed domains.
+---
+
+# technitium\_allowed\_zones (Data Source)
+
+Retrieves the full set of domains in the Technitium DNS Server allowed zone list. Use this data source to enumerate all allowed domains, count them, or cross-reference them against other configuration.
+
+## Example Usage
+
+```terraform
+data "technitium_allowed_zones" "all" {}
+
+output "allowed_domain_count" {
+  value = length(data.technitium_allowed_zones.all.domains)
+}
+```
+
+## Argument Reference
+
+This data source has no required or optional arguments. All attributes are computed.
+
+## Attributes Reference
+
+* `id` - Fixed identifier for this data source (`"allowed-zones"`).
+
+* `domains` - Set of all domain names currently present in the allowed zone list.

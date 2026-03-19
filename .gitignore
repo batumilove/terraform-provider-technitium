@@ -131,10 +131,7 @@ go.work
 *.swo
 *~
 
-# Generated docs (regenerated via make generate)
-docs/index.md
-docs/resources/
-docs/data-sources/
+# Generated docs are committed for Terraform Registry (regenerate via make docs)
 
 # GPG
 *.gpg

@@ -370,6 +370,41 @@ func TestAccTSIGKeyResource_NSS_blocked_sha512_256(t *testing.T) {
 	})
 }
 
+func TestAccTSIGKeyDataSource_basic(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccTSIGKeyDataSourceBasic(),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("data.technitium_tsig_key.test", "key_name", "acc-ds.example.com"),
+					resource.TestCheckResourceAttr("data.technitium_tsig_key.test", "algorithm", "hmac-sha256"),
+					resource.TestCheckResourceAttrSet("data.technitium_tsig_key.test", "shared_secret"),
+				),
+			},
+		},
+	})
+}
+
+func testAccTSIGKeyDataSourceBasic() string {
+	return fmt.Sprintf(`
+provider "technitium" {
+  server_url = "http://127.0.0.1:5380"
+  api_token  = "%s"
+}
+
+resource "technitium_tsig_key" "seed" {
+  key_name      = "acc-ds.example.com"
+  algorithm     = "hmac-sha256"
+  shared_secret = "ZGF0YXNvdXJjZXRlc3RzZWNyZXQ="
+}
+
+data "technitium_tsig_key" "test" {
+  key_name = technitium_tsig_key.seed.key_name
+}
+`, testAccAPIToken())
+}
+
 func testAccTSIGKeyResourceAlgorithm(algo string) string {
 	keyName := fmt.Sprintf("acc-algo-%s.example.com", algo)
 	return fmt.Sprintf(`

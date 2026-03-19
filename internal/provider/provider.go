@@ -234,6 +234,7 @@ func (p *TechnitiumProvider) DataSources(_ context.Context) []func() datasource.
 		NewZoneDataSource,
 		NewRecordDataSource,
 		NewServerSettingsDataSource,
+		NewTSIGKeyDataSource,
 	}
 }
 

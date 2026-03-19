@@ -45,6 +45,8 @@ type ZoneResourceModel struct {
 	Notify               types.List         `tfsdk:"notify"`
 	AllowTransfer        types.List         `tfsdk:"allow_transfer"`
 	DNSSEC               *DNSSECModel       `tfsdk:"dnssec"`
+	ZoneTransferTsigKeyNames       types.List   `tfsdk:"zone_transfer_tsig_key_names"`
+	PrimaryZoneTransferTsigKeyName types.String `tfsdk:"primary_zone_transfer_tsig_key_name"`
 	// Computed
 	SOASerial            types.Int64        `tfsdk:"soa_serial"`
 	Status               types.String       `tfsdk:"status"`
@@ -103,6 +105,19 @@ func (r *ZoneResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 				Description: "List of IP addresses allowed to perform zone transfers. Maps to STIG BIND-9X-001010 (AC-10).",
 				Optional:    true,
 				ElementType: types.StringType,
+			},
+			"zone_transfer_tsig_key_names": schema.ListAttribute{
+				Description: "List of TSIG key names authorized to perform zone transfers. " +
+					"Valid for Primary, Secondary, Forwarder, and Catalog zones. " +
+					"Maps to STIG BIND-9X-001010 (AC-10).",
+				Optional:    true,
+				ElementType: types.StringType,
+			},
+			"primary_zone_transfer_tsig_key_name": schema.StringAttribute{
+				Description: "TSIG key name for authenticating zone transfers from the primary server. " +
+					"Valid only for Secondary, SecondaryForwarder, and SecondaryCatalog zones. " +
+					"Maps to STIG BIND-9X-001010 (AC-10).",
+				Optional: true,
 			},
 			// Computed attributes
 			"soa_serial": schema.Int64Attribute{
@@ -365,6 +380,25 @@ func (r *ZoneResource) setZoneOptions(ctx context.Context, plan *ZoneResourceMod
 		}
 	}
 
+	// Handle zone_transfer_tsig_key_names
+	if !plan.ZoneTransferTsigKeyNames.IsNull() && !plan.ZoneTransferTsigKeyNames.IsUnknown() {
+		var keyNames []string
+		plan.ZoneTransferTsigKeyNames.ElementsAs(ctx, &keyNames, false)
+		if len(keyNames) > 0 {
+			opts["zoneTransferTsigKeyNames"] = strings.Join(keyNames, ",")
+		} else {
+			opts["zoneTransferTsigKeyNames"] = "false"
+		}
+	}
+
+	// Handle primary_zone_transfer_tsig_key_name
+	if !plan.PrimaryZoneTransferTsigKeyName.IsNull() && !plan.PrimaryZoneTransferTsigKeyName.IsUnknown() {
+		val := plan.PrimaryZoneTransferTsigKeyName.ValueString()
+		if val != "" {
+			opts["primaryZoneTransferTsigKeyName"] = val
+		}
+	}
+
 	if len(opts) > 0 {
 		return r.client.ZoneOptionsSet(plan.Name.ValueString(), opts)
 	}
@@ -409,6 +443,18 @@ func (r *ZoneResource) readZoneState(ctx context.Context, model *ZoneResourceMod
 		model.AllowTransfer = transferList
 	} else if !model.AllowTransfer.IsNull() {
 		// Keep existing plan value if it was set
+	}
+
+	// Read zone_transfer_tsig_key_names
+	readStringList(ctx, &model.ZoneTransferTsigKeyNames, zone.ZoneTransferTsigKeys)
+
+	// Read primary_zone_transfer_tsig_key_name
+	// Set to null for non-secondary zone types to prevent perpetual diffs
+	isSecondaryType := zone.Type == "Secondary" || zone.Type == "SecondaryForwarder" || zone.Type == "SecondaryCatalog"
+	if isSecondaryType && zone.PrimaryZoneTransferTsigKeyName != "" {
+		model.PrimaryZoneTransferTsigKeyName = types.StringValue(zone.PrimaryZoneTransferTsigKeyName)
+	} else {
+		model.PrimaryZoneTransferTsigKeyName = types.StringNull()
 	}
 
 	// Read SOA serial from zone list

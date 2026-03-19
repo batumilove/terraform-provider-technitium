@@ -114,6 +114,47 @@ func TestAccZoneResource_NonNSSKeepsP256(t *testing.T) {
 	})
 }
 
+func TestAccZoneResource_ZoneTransferTsigKeys(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccZoneResourceWithTsigKeys("acc-tsig-xfer.example.com"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("technitium_zone.tsig", "name", "acc-tsig-xfer.example.com"),
+					resource.TestCheckResourceAttr("technitium_zone.tsig", "zone_transfer_tsig_key_names.#", "1"),
+					resource.TestCheckResourceAttr("technitium_zone.tsig", "zone_transfer_tsig_key_names.0", "acc-xfer-key.example.com"),
+				),
+			},
+		},
+	})
+}
+
+func testAccZoneResourceWithTsigKeys(zoneName string) string {
+	return fmt.Sprintf(`
+provider "technitium" {
+  server_url = "http://127.0.0.1:5380"
+  api_token  = "%s"
+}
+
+resource "technitium_tsig_key" "xfer" {
+  key_name  = "acc-xfer-key.example.com"
+  algorithm = "hmac-sha256"
+}
+
+resource "technitium_zone" "tsig" {
+  name = %q
+  type = "Primary"
+
+  zone_transfer_tsig_key_names = [technitium_tsig_key.xfer.key_name]
+
+  dnssec {
+    enabled = false
+  }
+}
+`, testAccAPIToken(), zoneName)
+}
+
 func testAccZoneResourceNSSP256(name string) string {
 	return fmt.Sprintf(`
 provider "technitium" {

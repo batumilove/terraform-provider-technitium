@@ -13,7 +13,9 @@ If you discover a security vulnerability in this provider, please report it resp
 
 **Do NOT open a public GitHub issue for security vulnerabilities.**
 
-Instead, please email **darkhonor@gmail.com** with:
+Instead, please use [GitHub's private vulnerability reporting](https://github.com/darkhonor/terraform-provider-technitium/security/advisories/new) to submit your report. This keeps the conversation private between you and the maintainers until a fix is available.
+
+In your report, please include:
 
 1. A description of the vulnerability
 2. Steps to reproduce the issue

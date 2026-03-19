@@ -3,7 +3,7 @@
 [![Terraform Registry](https://img.shields.io/badge/terraform-registry-blueviolet)](https://registry.terraform.io/providers/darkhonor/technitium/latest)
 [![Go Version](https://img.shields.io/badge/go-1.26-blue)](https://go.dev/)
 [![License: MPL-2.0](https://img.shields.io/badge/license-MPL--2.0-orange)](LICENSE)
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/darkhonor/terraform-provider-technitium/badge)](https://securityscorecards.dev/viewer/?uri=github.com/darkhonor/terraform-provider-technitium)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/darkhonor/terraform-provider-technitium/badge)](https://scorecard.dev/viewer/?uri=github.com/darkhonor/terraform-provider-technitium)
 
 ## Overview
 

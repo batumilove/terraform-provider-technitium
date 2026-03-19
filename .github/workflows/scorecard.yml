@@ -1,0 +1,35 @@
+name: Scorecard
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  security-events: write
+  id-token: write
+  contents: read
+
+jobs:
+  analysis:
+    name: Scorecard Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Run Scorecard
+        uses: ossf/scorecard-action@979ba56f547dcc27b06a9ab51bc0ec3e009f8787 # v2
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: true
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@38b3b7bf288d49ccf58644769dc7a6afdccd05eb # v3
+        with:
+          sarif_file: results.sarif

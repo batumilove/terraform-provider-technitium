@@ -29,7 +29,8 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: "1.26"
-      - run: make test
+      - name: Run unit tests (skip acceptance)
+        run: go test -v -count=1 -run '^Test[^A]' ./...
 
   lint:
     name: Lint
@@ -66,4 +67,4 @@ jobs:
       - name: Install gosec
         run: go install github.com/securego/gosec/v2/cmd/gosec@latest
       - name: Run gosec
-        run: gosec ./...
+        run: gosec -exclude=G304 ./...

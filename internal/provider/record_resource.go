@@ -41,18 +41,26 @@ type RecordResource struct {
 }
 
 type RecordResourceModel struct {
-	ID        types.String `tfsdk:"id"`
-	Zone      types.String `tfsdk:"zone"`
-	Name      types.String `tfsdk:"name"`
-	Type      types.String `tfsdk:"type"`
-	TTL       types.Int64  `tfsdk:"ttl"`
-	Value     types.String `tfsdk:"value"`
-	Priority  types.Int64  `tfsdk:"priority"`
-	Weight    types.Int64  `tfsdk:"weight"`
-	Port      types.Int64  `tfsdk:"port"`
-	CAAFlags  types.Int64  `tfsdk:"caa_flags"`
-	CAATag    types.String `tfsdk:"caa_tag"`
-	Overwrite types.Bool   `tfsdk:"overwrite"`
+	ID                types.String `tfsdk:"id"`
+	Zone              types.String `tfsdk:"zone"`
+	Name              types.String `tfsdk:"name"`
+	Type              types.String `tfsdk:"type"`
+	TTL               types.Int64  `tfsdk:"ttl"`
+	Value             types.String `tfsdk:"value"`
+	Priority          types.Int64  `tfsdk:"priority"`
+	Weight            types.Int64  `tfsdk:"weight"`
+	Port              types.Int64  `tfsdk:"port"`
+	CAAFlags          types.Int64  `tfsdk:"caa_flags"`
+	CAATag            types.String `tfsdk:"caa_tag"`
+	Protocol          types.String `tfsdk:"protocol"`
+	ForwarderPriority types.Int64  `tfsdk:"forwarder_priority"`
+	DNSSECValidation  types.Bool   `tfsdk:"dnssec_validation"`
+	ProxyType         types.String `tfsdk:"proxy_type"`
+	ProxyAddress      types.String `tfsdk:"proxy_address"`
+	ProxyPort         types.Int64  `tfsdk:"proxy_port"`
+	ProxyUsername     types.String `tfsdk:"proxy_username"`
+	ProxyPassword     types.String `tfsdk:"proxy_password"`
+	Overwrite         types.Bool   `tfsdk:"overwrite"`
 	// Computed
 	LastModified types.String `tfsdk:"last_modified"`
 }
@@ -84,7 +92,7 @@ func (r *RecordResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 				},
 			},
 			"type": schema.StringAttribute{
-				Description: "DNS record type: A, AAAA, CNAME, MX, TXT, SRV, PTR, NS, CAA.",
+				Description: "DNS record type: A, AAAA, CNAME, MX, TXT, SRV, PTR, NS, CAA, FWD.",
 				Required:    true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
@@ -97,7 +105,7 @@ func (r *RecordResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 				Default:     int64default.StaticInt64(3600),
 			},
 			"value": schema.StringAttribute{
-				Description: "Record data. For A/AAAA: IP address. For CNAME: target domain. For MX: exchange domain. For TXT: text data. For SRV: target. For PTR: domain name. For NS: nameserver. For CAA: value.",
+				Description: "Record data. For A/AAAA: IP address. For CNAME: target domain. For MX: exchange domain. For TXT: text data. For SRV: target. For PTR: domain name. For NS: nameserver. For CAA: value. For FWD: forwarder address.",
 				Required:    true,
 			},
 			"priority": schema.Int64Attribute{
@@ -119,6 +127,39 @@ func (r *RecordResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 			"caa_tag": schema.StringAttribute{
 				Description: "CAA record tag: issue, issuewild, iodef. Required for CAA records.",
 				Optional:    true,
+			},
+			"protocol": schema.StringAttribute{
+				Description: "FWD record DNS transport protocol: Udp, Tcp, Tls, Https, or Quic. Optional for FWD records; Technitium defaults to Udp.",
+				Optional:    true,
+			},
+			"forwarder_priority": schema.Int64Attribute{
+				Description: "FWD record priority. Lower values are queried first; same-priority forwarders are queried concurrently.",
+				Optional:    true,
+			},
+			"dnssec_validation": schema.BoolAttribute{
+				Description: "Whether DNSSEC validation must be done for this FWD record.",
+				Optional:    true,
+			},
+			"proxy_type": schema.StringAttribute{
+				Description: "Proxy type for FWD records: NoProxy, DefaultProxy, Http, or Socks5.",
+				Optional:    true,
+			},
+			"proxy_address": schema.StringAttribute{
+				Description: "Proxy server address for FWD records.",
+				Optional:    true,
+			},
+			"proxy_port": schema.Int64Attribute{
+				Description: "Proxy server port for FWD records.",
+				Optional:    true,
+			},
+			"proxy_username": schema.StringAttribute{
+				Description: "Proxy username for FWD records.",
+				Optional:    true,
+			},
+			"proxy_password": schema.StringAttribute{
+				Description: "Proxy password for FWD records.",
+				Optional:    true,
+				Sensitive:   true,
 			},
 			"overwrite": schema.BoolAttribute{
 				Description: "Replace existing record set for this type. Default: true.",
@@ -218,7 +259,12 @@ func (r *RecordResource) Read(ctx context.Context, req resource.ReadRequest, res
 	recordType := state.Type.ValueString()
 	for _, rec := range records {
 		if recordMatchesState(rec, &state) {
-			state.TTL = types.Int64Value(int64(rec.TTL))
+			if recordType == "FWD" && !state.TTL.IsNull() && !state.TTL.IsUnknown() {
+				// Technitium stores FWD records with TTL 0; preserve configured TTL
+				// to avoid perpetual diffs for an API-ignored field.
+			} else {
+				state.TTL = types.Int64Value(int64(rec.TTL))
+			}
 			state.Value = types.StringValue(client.RecordValueFromRData(recordType, rec.RData))
 			state.LastModified = types.StringValue(rec.LastModified)
 
@@ -232,7 +278,7 @@ func (r *RecordResource) Read(ctx context.Context, req resource.ReadRequest, res
 			if port, ok := rec.RData["port"]; ok {
 				state.Port = types.Int64Value(int64(toFloat64(port)))
 			}
-			if priority, ok := rec.RData["priority"]; ok {
+			if priority, ok := rec.RData["priority"]; ok && recordType != "FWD" {
 				state.Priority = types.Int64Value(int64(toFloat64(priority)))
 			}
 			// CAA fields
@@ -241,6 +287,22 @@ func (r *RecordResource) Read(ctx context.Context, req resource.ReadRequest, res
 			}
 			if tag, ok := rec.RData["tag"]; ok {
 				state.CAATag = types.StringValue(fmt.Sprintf("%v", tag))
+			}
+
+			// FWD fields
+			if protocol, ok := rec.RData["protocol"]; ok {
+				state.Protocol = types.StringValue(fmt.Sprintf("%v", protocol))
+			}
+			if priority, ok := rec.RData["priority"]; ok && recordType == "FWD" {
+				state.ForwarderPriority = types.Int64Value(int64(toFloat64(priority)))
+			}
+			if priority, ok := rec.RData["forwarderPriority"]; ok {
+				state.ForwarderPriority = types.Int64Value(int64(toFloat64(priority)))
+			}
+			if dnssecValidation, ok := rec.RData["dnssecValidation"]; ok {
+				if v, ok := dnssecValidation.(bool); ok {
+					state.DNSSECValidation = types.BoolValue(v)
+				}
 			}
 
 			found = true
@@ -375,6 +437,10 @@ func (r *RecordResource) ImportState(ctx context.Context, req resource.ImportSta
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("caa_flags"), caaFlags)...)
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("caa_tag"), caaTag)...)
 	}
+	if recordType == "FWD" {
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("protocol"), caaTag)...)
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("forwarder_priority"), priority)...)
+	}
 }
 
 // buildAddParams creates type-specific API parameters for record creation.
@@ -415,6 +481,19 @@ func (r *RecordResource) buildAddParams(model *RecordResourceModel) map[string]s
 		} else {
 			params["tag"] = "issue"
 		}
+	}
+
+	if recordType == "FWD" {
+		if !model.Protocol.IsNull() && model.Protocol.ValueString() != "" {
+			params["protocol"] = model.Protocol.ValueString()
+		}
+		if !model.ForwarderPriority.IsNull() {
+			params["forwarderPriority"] = fmt.Sprintf("%d", model.ForwarderPriority.ValueInt64())
+		}
+		if !model.DNSSECValidation.IsNull() {
+			params["dnssecValidation"] = fmt.Sprintf("%t", model.DNSSECValidation.ValueBool())
+		}
+		addOptionalFWDProxyParams(params, model)
 	}
 
 	return params
@@ -504,6 +583,27 @@ func (r *RecordResource) buildUpdateParams(state, plan *RecordResourceModel) map
 		if !plan.CAATag.IsNull() {
 			params["newTag"] = plan.CAATag.ValueString()
 		}
+	case "FWD":
+		params["forwarder"] = oldValue
+		if oldValue != newValue {
+			params["newForwarder"] = newValue
+		}
+		if !state.Protocol.IsNull() {
+			params["protocol"] = state.Protocol.ValueString()
+		}
+		if !plan.Protocol.IsNull() {
+			params["newProtocol"] = plan.Protocol.ValueString()
+		}
+		if !state.ForwarderPriority.IsNull() {
+			params["forwarderPriority"] = fmt.Sprintf("%d", state.ForwarderPriority.ValueInt64())
+		}
+		if !plan.ForwarderPriority.IsNull() {
+			params["newForwarderPriority"] = fmt.Sprintf("%d", plan.ForwarderPriority.ValueInt64())
+		}
+		if !plan.DNSSECValidation.IsNull() {
+			params["dnssecValidation"] = fmt.Sprintf("%t", plan.DNSSECValidation.ValueBool())
+		}
+		addOptionalFWDProxyParams(params, plan)
 	default:
 		params[valueParam] = newValue
 	}
@@ -544,6 +644,15 @@ func (r *RecordResource) buildDeleteParams(model *RecordResourceModel) map[strin
 		}
 	}
 
+	if recordType == "FWD" {
+		if !model.Protocol.IsNull() && model.Protocol.ValueString() != "" {
+			params["protocol"] = model.Protocol.ValueString()
+		}
+		if !model.ForwarderPriority.IsNull() {
+			params["forwarderPriority"] = fmt.Sprintf("%d", model.ForwarderPriority.ValueInt64())
+		}
+	}
+
 	return params
 }
 
@@ -558,5 +667,23 @@ func toFloat64(v interface{}) float64 {
 		return float64(n)
 	default:
 		return 0
+	}
+}
+
+func addOptionalFWDProxyParams(params map[string]string, model *RecordResourceModel) {
+	if !model.ProxyType.IsNull() && model.ProxyType.ValueString() != "" {
+		params["proxyType"] = model.ProxyType.ValueString()
+	}
+	if !model.ProxyAddress.IsNull() && model.ProxyAddress.ValueString() != "" {
+		params["proxyAddress"] = model.ProxyAddress.ValueString()
+	}
+	if !model.ProxyPort.IsNull() {
+		params["proxyPort"] = fmt.Sprintf("%d", model.ProxyPort.ValueInt64())
+	}
+	if !model.ProxyUsername.IsNull() && model.ProxyUsername.ValueString() != "" {
+		params["proxyUsername"] = model.ProxyUsername.ValueString()
+	}
+	if !model.ProxyPassword.IsNull() && model.ProxyPassword.ValueString() != "" {
+		params["proxyPassword"] = model.ProxyPassword.ValueString()
 	}
 }

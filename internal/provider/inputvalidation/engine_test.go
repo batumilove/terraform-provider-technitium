@@ -193,6 +193,7 @@ func TestDefaultRegistry_HasAllRecordRules(t *testing.T) {
 		"srv_record":          false,
 		"txt_record_nonempty": false,
 		"caa_record":          false,
+		"fwd_record":          false,
 	}
 
 	for _, rule := range rules {

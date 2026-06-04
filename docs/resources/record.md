@@ -3,13 +3,13 @@ subcategory: ""
 page_title: "technitium_record Resource - Technitium DNS Server"
 description: |-
   Manages a DNS record in a Technitium DNS zone. Supports A, AAAA, CNAME, MX, TXT, SRV,
-  PTR, NS, and CAA record types. Client-side validation ensures type/value compatibility
+  PTR, NS, CAA, and FWD record types. Client-side validation ensures type/value compatibility
   before API calls.
 ---
 
 # technitium\_record (Resource)
 
-Manages a DNS record in a Technitium DNS zone. Supports A, AAAA, CNAME, MX, TXT, SRV, PTR, NS, and CAA record types. Client-side validation ensures type/value compatibility before API calls.
+Manages a DNS record in a Technitium DNS zone. Supports A, AAAA, CNAME, MX, TXT, SRV, PTR, NS, CAA, and FWD record types. Client-side validation ensures type/value compatibility before API calls.
 
 -> The `overwrite` attribute controls whether this record replaces existing records of the same type at the same name. Default is `true`.
 
@@ -136,9 +136,9 @@ resource "technitium_record" "web2" {
 
 * `name` - (Required, String) FQDN for the record. (Forces replacement.)
 
-* `type` - (Required, String) Record type. Valid values: `A`, `AAAA`, `CNAME`, `MX`, `TXT`, `SRV`, `PTR`, `NS`, `CAA`. (Forces replacement.)
+* `type` - (Required, String) Record type. Valid values: `A`, `AAAA`, `CNAME`, `MX`, `TXT`, `SRV`, `PTR`, `NS`, `CAA`, `FWD`. (Forces replacement.)
 
-* `value` - (Required, String) Record data.
+* `value` - (Required, String) Record data. For `FWD`, this is the forwarder address using Technitium name-server address syntax, e.g. `1.1.1.1`, `dns.quad9.net:853 (9.9.9.9)`, or a DoH URL.
 
 * `ttl` - (Optional, Integer) TTL in seconds. Default: `3600`.
 
@@ -152,13 +152,21 @@ resource "technitium_record" "web2" {
 
 * `caa_tag` - (Optional, String) CAA tag. Valid values: `issue`, `issuewild`, `iodef`.
 
+* `protocol` - (Optional, String) Protocol for `FWD` records. Valid values: `Udp`, `Tcp`, `Tls`, `Https`, `Quic`.
+
+* `forwarder_priority` - (Optional, Integer) Priority for `FWD` records. Lower values are queried first.
+
+* `dnssec_validation` - (Optional, Boolean) Enable DNSSEC validation for `FWD` records.
+
+* `proxy_type`, `proxy_address`, `proxy_port`, `proxy_username`, `proxy_password` - (Optional) Proxy settings for `FWD` records. `proxy_password` is sensitive.
+
 * `overwrite` - (Optional, Boolean) Replace existing record set. Default: `true`.
 
 ## Attributes Reference
 
 In addition to the arguments above, the following computed attributes are exported:
 
-* `id` - Record identifier (`zone::name::type::value` composite key). For MX records: `zone::name::MX::exchange:priority`. For SRV records: `zone::name::SRV::target:priority:weight:port`. For CAA records: `zone::name::CAA::value:flags:tag`.
+* `id` - Record identifier (`zone::name::type::value` composite key). For MX records: `zone::name::MX::exchange:priority`. For SRV records: `zone::name::SRV::target:priority:weight:port`. For CAA records: `zone::name::CAA::value:flags:tag`. For FWD records: `zone::name::FWD::forwarder:protocol:priority`.
 
 * `last_modified` - Timestamp of last modification.
 
@@ -178,4 +186,7 @@ terraform import technitium_record.sip "example.com::_sip._tcp.example.com::SRV:
 
 # CAA record (value:flags:tag)
 terraform import technitium_record.caa "example.com::example.com::CAA::letsencrypt.org:0:issue"
+
+# FWD record (forwarder:protocol:priority)
+terraform import technitium_record.forwarder ".::.::FWD::1.1.1.1:Udp:2"
 ```

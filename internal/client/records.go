@@ -42,6 +42,7 @@ type RecordGetResponse struct {
 //   - PTR: "ptrName"
 //   - NS: "nameServer"
 //   - CAA: "flags", "tag", "value"
+//   - FWD: "protocol", "forwarder", "forwarderPriority", "dnssecValidation"
 func (c *Client) RecordAdd(ctx context.Context, domain, zone, recordType string, ttl int, overwrite bool, params map[string]string) (*Record, error) {
 	qp := url.Values{
 		"domain": {domain},
@@ -127,6 +128,7 @@ func (c *Client) RecordUpdate(ctx context.Context, domain, zone, recordType stri
 //   - PTR: "ptrName"
 //   - NS: "nameServer"
 //   - CAA: "flags", "tag", "value"
+//   - FWD: "protocol", "forwarder", "forwarderPriority", "dnssecValidation"
 func (c *Client) RecordDelete(ctx context.Context, domain, zone, recordType string, params map[string]string) error {
 	qp := url.Values{
 		"domain": {domain},
@@ -164,6 +166,8 @@ func RecordValueParam(recordType string) string {
 		return "nameServer"
 	case "CAA":
 		return "value"
+	case "FWD":
+		return "forwarder"
 	default:
 		return "value"
 	}

@@ -140,6 +140,52 @@ func TestBuildRecordID_CAA(t *testing.T) {
 	}
 }
 
+func TestBuildRecordID_FWD(t *testing.T) {
+	model := RecordResourceModel{
+		Zone:              types.StringValue("."),
+		Name:              types.StringValue("."),
+		Type:              types.StringValue("FWD"),
+		Value:             types.StringValue("dns.quad9.net:853 (9.9.9.9)"),
+		Protocol:          types.StringValue("Tls"),
+		ForwarderPriority: types.Int64Value(1),
+	}
+	expected := ".::.::FWD::dns.quad9.net:853 (9.9.9.9):Tls:1"
+	got := buildRecordID(&model)
+	if got != expected {
+		t.Errorf("buildRecordID() = %q, want %q", got, expected)
+	}
+}
+
+func TestParseImportValueSegment_FWD(t *testing.T) {
+	value, priority, _, _, _, protocol, err := parseImportValueSegment("FWD", "dns.quad9.net:853 (9.9.9.9):Tls:1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if value != "dns.quad9.net:853 (9.9.9.9)" || protocol != "Tls" || priority != 1 {
+		t.Fatalf("parsed FWD = value %q protocol %q priority %d", value, protocol, priority)
+	}
+}
+
+func TestRecordMatchesState_FWD(t *testing.T) {
+	rec := client.Record{
+		Type: "FWD",
+		RData: map[string]interface{}{
+			"forwarder":         "1.1.1.1",
+			"protocol":          "Udp",
+			"forwarderPriority": float64(2),
+		},
+	}
+	state := RecordResourceModel{
+		Type:              types.StringValue("FWD"),
+		Value:             types.StringValue("1.1.1.1"),
+		Protocol:          types.StringValue("Udp"),
+		ForwarderPriority: types.Int64Value(2),
+	}
+	if !recordMatchesState(rec, &state) {
+		t.Fatal("expected FWD record to match state")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // parseRecordID tests
 // ---------------------------------------------------------------------------

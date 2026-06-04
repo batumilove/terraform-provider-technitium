@@ -75,6 +75,37 @@ func TestNewClient_SkipTLSVerify(t *testing.T) {
 	}
 }
 
+func TestZoneCreate_ForwarderCreatesEmptyZone(t *testing.T) {
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/zones/create" {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+		q := r.URL.Query()
+		if q.Get("zone") != "." || q.Get("type") != "Forwarder" {
+			t.Fatalf("unexpected create query: %s", r.URL.RawQuery)
+		}
+		if q.Get("initializeForwarder") != "false" {
+			t.Fatalf("Forwarder zone should be created empty with initializeForwarder=false, got query: %s", r.URL.RawQuery)
+		}
+		if err := json.NewEncoder(w).Encode(APIResponse{
+			Status:   "ok",
+			Response: json.RawMessage(`{"domain":"."}`),
+		}); err != nil {
+			t.Fatalf("failed to encode response: %v", err)
+		}
+	})
+	defer ts.Close()
+
+	c, _ := NewClient(ClientConfig{BaseURL: ts.URL, Token: "test-token"})
+	domain, err := c.ZoneCreate(context.Background(), ".", "Forwarder", true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if domain != "." {
+		t.Fatalf("domain = %q, want .", domain)
+	}
+}
+
 func TestDoGet_Success(t *testing.T) {
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("token") != "test-token" {
@@ -350,9 +381,9 @@ func TestNewClient_CACertDir_Valid(t *testing.T) {
 	}
 
 	c, err := NewClient(ClientConfig{
-		BaseURL:    "https://localhost:5380",
-		Token:      "test-token",
-		CACertDir:  dir,
+		BaseURL:   "https://localhost:5380",
+		Token:     "test-token",
+		CACertDir: dir,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

@@ -11,7 +11,7 @@ import (
 // validRecordTypes is the set of record types supported by the provider.
 var validRecordTypes = map[string]bool{
 	"A": true, "AAAA": true, "CNAME": true, "MX": true,
-	"NS": true, "PTR": true, "SRV": true, "TXT": true, "CAA": true,
+	"NS": true, "PTR": true, "SRV": true, "TXT": true, "CAA": true, "FWD": true,
 }
 
 // registerRecordRules adds all DNS record validation rules to the registry.
@@ -26,6 +26,7 @@ func registerRecordRules(r *Registry) {
 	r.Register(validatePTRRecord())
 	r.Register(validateSRVRecord())
 	r.Register(validateCAARecord())
+	r.Register(validateFWDRecord())
 }
 
 // DefaultRegistry returns a registry pre-loaded with all built-in validation rules.
@@ -42,7 +43,7 @@ func DefaultRegistry() *Registry {
 func validateRecordType() ValidationRule {
 	return ValidationRule{
 		Name:        "record_type",
-		Description: "Validates the record type is one of the 9 supported types",
+		Description: "Validates the record type is one of the supported types",
 		Resource:    ResourceRecord,
 		Validate: func(ctx context.Context, config ConfigAccessor) []Finding {
 			rt, ok := config.GetString("type")
@@ -53,7 +54,7 @@ func validateRecordType() ValidationRule {
 				return []Finding{{
 					Attribute: "type",
 					Summary:   fmt.Sprintf("Invalid record type: %q", rt),
-					Detail:    "Supported record types are: A, AAAA, CNAME, MX, NS, PTR, SRV, TXT, CAA (case-sensitive).",
+					Detail:    "Supported record types are: A, AAAA, CNAME, MX, NS, PTR, SRV, TXT, CAA, FWD (case-sensitive).",
 				}}
 			}
 			return nil
@@ -405,6 +406,57 @@ func validateCAARecord() ValidationRule {
 					Attribute: "value",
 					Summary:   "Invalid CAA record value: value must not be empty",
 					Detail:    `CAA records require a non-empty value (e.g., "letsencrypt.org").`,
+				})
+			}
+
+			return findings
+		},
+	}
+}
+
+// ---------------------------------------------------------------------------
+// FWD record
+// ---------------------------------------------------------------------------
+
+var validFWDProtocols = map[string]bool{
+	"Udp": true, "Tcp": true, "Tls": true, "Https": true, "Quic": true,
+}
+
+func validateFWDRecord() ValidationRule {
+	return ValidationRule{
+		Name:        "fwd_record",
+		Description: "FWD record: value must be non-empty and protocol must be valid",
+		Resource:    ResourceRecord,
+		Validate: func(ctx context.Context, config ConfigAccessor) []Finding {
+			rt, ok := config.GetString("type")
+			if !ok || rt != "FWD" {
+				return nil
+			}
+			var findings []Finding
+
+			value, ok := config.GetString("value")
+			if ok && value == "" {
+				findings = append(findings, Finding{
+					Attribute: "value",
+					Summary:   "Invalid FWD record value: forwarder address must not be empty",
+					Detail:    `FWD records require a forwarder address such as "1.1.1.1" or "dns.quad9.net:853 (9.9.9.9)".`,
+				})
+			}
+
+			protocol, hasProtocol := config.GetString("protocol")
+			if hasProtocol && protocol != "" && !validFWDProtocols[protocol] {
+				findings = append(findings, Finding{
+					Attribute: "protocol",
+					Summary:   fmt.Sprintf("Invalid FWD record protocol: %q is not supported", protocol),
+					Detail:    `FWD record protocol must be one of: "Udp", "Tcp", "Tls", "Https", "Quic".`,
+				})
+			}
+
+			if priority, hasPriority := config.GetInt64("forwarder_priority"); hasPriority && priority < 0 {
+				findings = append(findings, Finding{
+					Attribute: "forwarder_priority",
+					Summary:   fmt.Sprintf("Invalid FWD record forwarder_priority: %d is negative", priority),
+					Detail:    "FWD record forwarder_priority must be zero or greater; lower values are queried first.",
 				})
 			}
 

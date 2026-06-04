@@ -11,7 +11,7 @@ import (
 // --- Record type validator ---
 
 func TestValidateRecordType_Valid(t *testing.T) {
-	validTypes := []string{"A", "AAAA", "CNAME", "MX", "NS", "PTR", "SRV", "TXT", "CAA"}
+	validTypes := []string{"A", "AAAA", "CNAME", "MX", "NS", "PTR", "SRV", "TXT", "CAA", "FWD"}
 	for _, rt := range validTypes {
 		t.Run(rt, func(t *testing.T) {
 			m := NewMockAccessor(map[string]interface{}{"type": rt})
@@ -44,6 +44,39 @@ func TestValidateRecordType_Missing(t *testing.T) {
 	findings := rule.Validate(context.Background(), m)
 	if len(findings) != 0 {
 		t.Errorf("expected 0 findings for missing type, got %d", len(findings))
+	}
+}
+
+func TestValidateFWDRecord_Valid(t *testing.T) {
+	m := NewMockAccessor(map[string]interface{}{
+		"type": "FWD", "value": "dns.quad9.net:853 (9.9.9.9)", "protocol": "Tls", "forwarder_priority": int64(1),
+	})
+	rule := validateFWDRecord()
+	findings := rule.Validate(context.Background(), m)
+	if len(findings) != 0 {
+		t.Fatalf("FWD record validator returned findings: %#v", findings)
+	}
+}
+
+func TestValidateFWDRecord_InvalidProtocol(t *testing.T) {
+	m := NewMockAccessor(map[string]interface{}{
+		"type": "FWD", "value": "1.1.1.1", "protocol": "Bogus", "forwarder_priority": int64(1),
+	})
+	rule := validateFWDRecord()
+	findings := rule.Validate(context.Background(), m)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding for invalid FWD protocol, got %d", len(findings))
+	}
+}
+
+func TestValidateFWDRecord_EmptyForwarder(t *testing.T) {
+	m := NewMockAccessor(map[string]interface{}{
+		"type": "FWD", "value": "", "protocol": "Udp", "forwarder_priority": int64(1),
+	})
+	rule := validateFWDRecord()
+	findings := rule.Validate(context.Background(), m)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding for empty FWD forwarder, got %d", len(findings))
 	}
 }
 

@@ -23,6 +23,7 @@ const recordIDSeparator = "::"
 //   - MX: zone::name::MX::exchange:priority
 //   - SRV: zone::name::SRV::target:priority:weight:port
 //   - CAA: zone::name::CAA::value:flags:tag
+//   - FWD: zone::name::FWD::forwarder:protocol:priority
 func buildRecordID(model *RecordResourceModel) string {
 	zone := model.Zone.ValueString()
 	name := model.Name.ValueString()
@@ -46,6 +47,8 @@ func buildRecordID(model *RecordResourceModel) string {
 			model.CAAFlags.ValueInt64(),
 			model.CAATag.ValueString(),
 		)
+	case "FWD":
+		valueSegment = fmt.Sprintf("%s:%s:%d", value, model.Protocol.ValueString(), model.ForwarderPriority.ValueInt64())
 	default:
 		valueSegment = value
 	}
@@ -74,6 +77,7 @@ func parseRecordID(id string) (zone, name, recordType, valueSegment string, err 
 //   - MX: exchange:priority (parsed from right via LastIndex)
 //   - SRV: target:priority:weight:port (last 3 fields numeric, rest is target)
 //   - CAA: value:flags:tag (last 2 fields are flags+tag, rest is value)
+//   - FWD: forwarder:protocol:priority (last 2 fields are protocol+priority)
 //   - Simple types: entire segment is the value
 func parseImportValueSegment(recordType, valueSegment string) (
 	value string, priority, weight, port, caaFlags int64, caaTag string, err error,
@@ -125,6 +129,22 @@ func parseImportValueSegment(recordType, valueSegment string) (
 		}
 		return target, p, w, pt, 0, "", nil
 
+	case "FWD":
+		parts := strings.Split(valueSegment, ":")
+		if len(parts) < 3 {
+			return "", 0, 0, 0, 0, "", fmt.Errorf(
+				"invalid FWD value segment %q: expected format forwarder:protocol:priority", valueSegment)
+		}
+		priorityStr := parts[len(parts)-1]
+		protocol := parts[len(parts)-2]
+		forwarder := strings.Join(parts[:len(parts)-2], ":")
+		p, parseErr := strconv.ParseInt(priorityStr, 10, 64)
+		if parseErr != nil {
+			return "", 0, 0, 0, 0, "", fmt.Errorf(
+				"invalid FWD priority in %q: %w", valueSegment, parseErr)
+		}
+		return forwarder, p, 0, 0, 0, protocol, nil
+
 	case "CAA":
 		// Format: value:flags:tag
 		// Parse from the right: last field is tag, second-to-last is flags.
@@ -158,6 +178,7 @@ func parseImportValueSegment(recordType, valueSegment string) (
 //   - MX: also match on preference (rData "preference") vs state.Priority
 //   - SRV: also match on priority, weight, port rData fields
 //   - CAA: also match on flags, tag rData fields
+//   - FWD: also match on protocol and priority/forwarderPriority rData fields
 func recordMatchesState(rec client.Record, state *RecordResourceModel) bool {
 	recordType := state.Type.ValueString()
 
@@ -204,6 +225,21 @@ func recordMatchesState(rec client.Record, state *RecordResourceModel) bool {
 		}
 		if tag, ok := rec.RData["tag"]; ok {
 			if fmt.Sprintf("%v", tag) != state.CAATag.ValueString() {
+				return false
+			}
+		}
+	case "FWD":
+		if protocol, ok := rec.RData["protocol"]; ok && !state.Protocol.IsNull() {
+			if fmt.Sprintf("%v", protocol) != state.Protocol.ValueString() {
+				return false
+			}
+		}
+		if priority, ok := rec.RData["forwarderPriority"]; ok && !state.ForwarderPriority.IsNull() {
+			if int64(toFloat64(priority)) != state.ForwarderPriority.ValueInt64() {
+				return false
+			}
+		} else if priority, ok := rec.RData["priority"]; ok && !state.ForwarderPriority.IsNull() {
+			if int64(toFloat64(priority)) != state.ForwarderPriority.ValueInt64() {
 				return false
 			}
 		}

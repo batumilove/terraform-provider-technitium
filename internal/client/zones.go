@@ -95,6 +95,12 @@ func (c *Client) ZoneCreate(ctx context.Context, name, zoneType string, useSoaSe
 	if useSoaSerialDateScheme {
 		params.Set("useSoaSerialDateScheme", "true")
 	}
+	if zoneType == "Forwarder" {
+		// Technitium initializes Forwarder zones with a required FWD record by
+		// default. Create an empty Forwarder zone so FWD records can be managed
+		// declaratively as separate technitium_record resources.
+		params.Set("initializeForwarder", "false")
+	}
 
 	resp, err := c.doGet(ctx, "/api/zones/create", params)
 	if err != nil {
@@ -106,6 +112,9 @@ func (c *Client) ZoneCreate(ctx context.Context, name, zoneType string, useSoaSe
 	}
 	if err := json.Unmarshal(resp.Response, &result); err != nil {
 		return "", fmt.Errorf("parsing create zone response: %w", err)
+	}
+	if result.Domain == "" {
+		return name, nil
 	}
 
 	return result.Domain, nil
@@ -267,7 +276,7 @@ func (c *Client) ZoneExists(ctx context.Context, name string) (bool, error) {
 		return false, err
 	}
 	for _, z := range zones {
-		if strings.EqualFold(z.Name, name) {
+		if strings.EqualFold(z.Name, name) || (name == "." && z.Name == "") {
 			return true, nil
 		}
 	}

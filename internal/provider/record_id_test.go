@@ -149,10 +149,46 @@ func TestBuildRecordID_FWD(t *testing.T) {
 		Protocol:          types.StringValue("Tls"),
 		ForwarderPriority: types.Int64Value(1),
 	}
-	expected := ".::.::FWD::dns.quad9.net:853 (9.9.9.9):Tls:1"
+	expected := ".::.::FWD::dns.quad9.net:853 (9.9.9.9):Tls:1:false"
 	got := buildRecordID(&model)
 	if got != expected {
 		t.Errorf("buildRecordID() = %q, want %q", got, expected)
+	}
+}
+
+func TestBuildRecordID_FWD_DNSSEC(t *testing.T) {
+	tests := []struct {
+		name     string
+		dnssec   bool
+		expected string
+	}{
+		{
+			name:     "dnssec true",
+			dnssec:   true,
+			expected: ".::.::FWD::1.1.1.1:Udp:1:true",
+		},
+		{
+			name:     "dnssec false",
+			dnssec:   false,
+			expected: ".::.::FWD::1.1.1.1:Udp:1:false",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			model := RecordResourceModel{
+				Zone:              types.StringValue("."),
+				Name:              types.StringValue("."),
+				Type:              types.StringValue("FWD"),
+				Value:             types.StringValue("1.1.1.1"),
+				Protocol:          types.StringValue("Udp"),
+				ForwarderPriority: types.Int64Value(1),
+				DNSSECValidation:  types.BoolValue(tc.dnssec),
+			}
+			got := buildRecordID(&model)
+			if got != tc.expected {
+				t.Errorf("buildRecordID() = %q, want %q", got, tc.expected)
+			}
+		})
 	}
 }
 
@@ -163,6 +199,69 @@ func TestParseImportValueSegment_FWD(t *testing.T) {
 	}
 	if value != "dns.quad9.net:853 (9.9.9.9)" || protocol != "Tls" || priority != 1 {
 		t.Fatalf("parsed FWD = value %q protocol %q priority %d", value, protocol, priority)
+	}
+}
+
+func TestParseImportValueSegment_FWD_DNSSEC(t *testing.T) {
+	tests := []struct {
+		name            string
+		valueSegment    string
+		wantForwarder   string
+		wantProtocol    string
+		wantPriority    int64
+	}{
+		{
+			name:          "with dnssec true",
+			valueSegment:  "1.1.1.1:Udp:1:true",
+			wantForwarder: "1.1.1.1",
+			wantProtocol:  "Udp",
+			wantPriority:  1,
+		},
+		{
+			name:          "with dnssec false",
+			valueSegment:  "1.1.1.1:Udp:1:false",
+			wantForwarder: "1.1.1.1",
+			wantProtocol:  "Udp",
+			wantPriority:  1,
+		},
+		{
+			name:          "without dnssec (backward compat)",
+			valueSegment:  "1.1.1.1:Udp:1",
+			wantForwarder: "1.1.1.1",
+			wantProtocol:  "Udp",
+			wantPriority:  1,
+		},
+		{
+			name:          "forwarder with colon in name + dnssec",
+			valueSegment:  "dns.quad9.net:853 (9.9.9.9):Tls:1:true",
+			wantForwarder: "dns.quad9.net:853 (9.9.9.9)",
+			wantProtocol:  "Tls",
+			wantPriority:  1,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			value, priority, _, _, _, protocol, err := parseImportValueSegment("FWD", tc.valueSegment)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if value != tc.wantForwarder {
+				t.Errorf("value = %q, want %q", value, tc.wantForwarder)
+			}
+			if protocol != tc.wantProtocol {
+				t.Errorf("protocol = %q, want %q", protocol, tc.wantProtocol)
+			}
+			if priority != tc.wantPriority {
+				t.Errorf("priority = %d, want %d", priority, tc.wantPriority)
+			}
+		})
+	}
+}
+
+func TestParseImportValueSegment_FWD_Invalid(t *testing.T) {
+	_, _, _, _, _, _, err := parseImportValueSegment("FWD", "1.1.1.1:Udp")
+	if err == nil {
+		t.Error("expected error for FWD with too few fields")
 	}
 }
 
@@ -183,6 +282,66 @@ func TestRecordMatchesState_FWD(t *testing.T) {
 	}
 	if !recordMatchesState(rec, &state) {
 		t.Fatal("expected FWD record to match state")
+	}
+}
+
+func TestRecordMatchesState_FWD_DNSSEC(t *testing.T) {
+	tests := []struct {
+		name      string
+		recDNSSEC float64
+		stateDNSSEC bool
+		wantMatch bool
+	}{
+		{"both true", 1, true, true},
+		{"both false", 0, false, true},
+		{"rec true state false", 1, false, false},
+		{"rec false state true", 0, true, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := client.Record{
+				Type: "FWD",
+				RData: map[string]interface{}{
+					"forwarder":         "1.1.1.1",
+					"protocol":          "Udp",
+					"forwarderPriority": float64(1),
+					"dnssecValidation":  tc.recDNSSEC,
+				},
+			}
+			state := RecordResourceModel{
+				Type:              types.StringValue("FWD"),
+				Value:             types.StringValue("1.1.1.1"),
+				Protocol:          types.StringValue("Udp"),
+				ForwarderPriority: types.Int64Value(1),
+				DNSSECValidation:  types.BoolValue(tc.stateDNSSEC),
+			}
+			got := recordMatchesState(rec, &state)
+			if got != tc.wantMatch {
+				t.Errorf("recordMatchesState() = %v, want %v", got, tc.wantMatch)
+			}
+		})
+	}
+}
+
+func TestRecordMatchesState_FWD_DNSSEC_Mismatch(t *testing.T) {
+	rec := client.Record{
+		Type: "FWD",
+		RData: map[string]interface{}{
+			"forwarder":         "1.1.1.1",
+			"protocol":          "Udp",
+			"forwarderPriority": float64(1),
+			"dnssecValidation":  float64(1),
+		},
+	}
+	state := RecordResourceModel{
+		Type:              types.StringValue("FWD"),
+		Value:             types.StringValue("1.1.1.1"),
+		Protocol:          types.StringValue("Udp"),
+		ForwarderPriority: types.Int64Value(1),
+		DNSSECValidation:  types.BoolValue(false),
+	}
+	if recordMatchesState(rec, &state) {
+		t.Fatal("expected no match when dnssecValidation differs")
 	}
 }
 

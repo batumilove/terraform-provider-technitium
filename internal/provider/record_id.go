@@ -248,7 +248,14 @@ func recordMatchesState(rec client.Record, state *RecordResourceModel) bool {
 			}
 		}
 		if dnssec, ok := rec.RData["dnssecValidation"]; ok && !state.DNSSECValidation.IsNull() {
-			if (int64(toFloat64(dnssec)) != 0) != state.DNSSECValidation.ValueBool() {
+			var apiDNSSEC bool
+			switch v := dnssec.(type) {
+			case bool:
+				apiDNSSEC = v
+			default:
+				apiDNSSEC = toFloat64(v) != 0
+			}
+			if apiDNSSEC != state.DNSSECValidation.ValueBool() {
 				return false
 			}
 		}

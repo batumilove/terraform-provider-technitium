@@ -548,6 +548,9 @@ func (r *ZoneResource) readZoneState(ctx context.Context, model *ZoneResourceMod
 		model.SOASerial = types.Int64Value(0)
 	}
 
+	// Set SOASerialDateScheme to match provider default (true)
+	model.SOASerialDateScheme = types.BoolValue(true)
+
 	// Read DNSSEC state
 	if zone.DNSSECStatus != "Unsigned" && zone.DNSSECStatus != "" {
 		props, err := r.client.ZoneDNSSECPropertiesGet(ctx, model.Name.ValueString())

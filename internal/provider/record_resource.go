@@ -440,6 +440,10 @@ func (r *RecordResource) ImportState(ctx context.Context, req resource.ImportSta
 	if recordType == "FWD" {
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("protocol"), caaTag)...)
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("forwarder_priority"), priority)...)
+		parts := strings.Split(valueSegment, ":")
+		if len(parts) >= 4 && (parts[len(parts)-1] == "true" || parts[len(parts)-1] == "false") {
+			resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("dnssec_validation"), parts[len(parts)-1] == "true")...)
+		}
 	}
 }
 

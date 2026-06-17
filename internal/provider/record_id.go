@@ -48,7 +48,7 @@ func buildRecordID(model *RecordResourceModel) string {
 			model.CAATag.ValueString(),
 		)
 	case "FWD":
-		valueSegment = fmt.Sprintf("%s:%s:%d", value, model.Protocol.ValueString(), model.ForwarderPriority.ValueInt64())
+		valueSegment = fmt.Sprintf("%s:%s:%d:%t", value, model.Protocol.ValueString(), model.ForwarderPriority.ValueInt64(), model.DNSSECValidation.ValueBool())
 	default:
 		valueSegment = value
 	}
@@ -133,11 +133,15 @@ func parseImportValueSegment(recordType, valueSegment string) (
 		parts := strings.Split(valueSegment, ":")
 		if len(parts) < 3 {
 			return "", 0, 0, 0, 0, "", fmt.Errorf(
-				"invalid FWD value segment %q: expected format forwarder:protocol:priority", valueSegment)
+				"invalid FWD value segment %q: expected format forwarder:protocol:priority[:dnssecValidation]", valueSegment)
 		}
-		priorityStr := parts[len(parts)-1]
-		protocol := parts[len(parts)-2]
-		forwarder := strings.Join(parts[:len(parts)-2], ":")
+		priorityIdx := len(parts) - 1
+		if parts[len(parts)-1] == "true" || parts[len(parts)-1] == "false" {
+			priorityIdx = len(parts) - 2
+		}
+		priorityStr := parts[priorityIdx]
+		protocol := parts[priorityIdx-1]
+		forwarder := strings.Join(parts[:priorityIdx-1], ":")
 		p, parseErr := strconv.ParseInt(priorityStr, 10, 64)
 		if parseErr != nil {
 			return "", 0, 0, 0, 0, "", fmt.Errorf(
@@ -240,6 +244,11 @@ func recordMatchesState(rec client.Record, state *RecordResourceModel) bool {
 			}
 		} else if priority, ok := rec.RData["priority"]; ok && !state.ForwarderPriority.IsNull() {
 			if int64(toFloat64(priority)) != state.ForwarderPriority.ValueInt64() {
+				return false
+			}
+		}
+		if dnssec, ok := rec.RData["dnssecValidation"]; ok && !state.DNSSECValidation.IsNull() {
+			if (int64(toFloat64(dnssec)) != 0) != state.DNSSECValidation.ValueBool() {
 				return false
 			}
 		}

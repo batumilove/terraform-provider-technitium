@@ -94,11 +94,14 @@ crash.log
 # Sensitive Info
 sensitive.txt
 
-# No AI directories
+# No AI directories / files (local-only; keep the published tree clean)
 **/.claude
 **/.gemini
 **/.bard
 **/.codex
+CLAUDE.md
+AGENTS.md
+GEMINI.md
 
 # Go binaries
 terraform-provider-technitium

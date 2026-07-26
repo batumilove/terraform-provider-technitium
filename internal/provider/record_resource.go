@@ -148,14 +148,14 @@ func (r *RecordResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 					// treats it as a SETTABLE value, not an identifier: there is no
 					// newDnssecValidation parameter, so a record can only be located by
 					// forwarder/protocol/forwarderPriority. Measured against Technitium
-					// 15.4 with two records differing only by this field — an update
+					// 15.2 and 15.4 with two records differing only by this field — an update
 					// rewrote one onto the other and the two COLLAPSED INTO ONE, with
 					// the API returning status "ok". Replacing routes the change through
 					// delete+create, which is well-defined for the ordinary single-record
 					// case. It does NOT rescue an existing colliding pair: delete ignores
 					// dnssecValidation when matching (see buildDeleteParams), so two FWD
 					// records differing only by this field cannot be addressed
-					// individually through the 15.4 API at all. The provider can keep
+					// individually through the 15.2 and 15.4 APIs at all. The provider can keep
 					// them distinct in state — that is what buildRecordID fixes — but
 					// acting on one without disturbing the other is a server-side gap.
 					boolplanmodifier.RequiresReplace(),
@@ -646,7 +646,7 @@ func (r *RecordResource) buildUpdateParams(state, plan *RecordResourceModel) map
 		}
 		// Always send the current value, falling back to state when the config
 		// omits the attribute. Technitium treats a MISSING dnssecValidation on
-		// update as false rather than "leave alone": verified against 15.4, a
+		// update as false rather than "leave alone": verified against 15.2 and 15.4, a
 		// TTL-only update silently flipped a dnssec=true record to false. Since
 		// the attribute is Optional and not Computed, a user who never writes it
 		// in HCL plans null on every apply, so without this fallback any
@@ -710,7 +710,7 @@ func (r *RecordResource) buildDeleteParams(model *RecordResourceModel) map[strin
 			params["forwarderPriority"] = fmt.Sprintf("%d", model.ForwarderPriority.ValueInt64())
 		}
 		// Sent for completeness and forward compatibility. Be clear about what
-		// this does NOT do: Technitium 15.4 IGNORES dnssecValidation when
+		// this does NOT do: Technitium 15.2 and 15.4 IGNORE dnssecValidation when
 		// matching a record to delete. Measured with two FWD records differing
 		// only by this field, all four combinations of creation order and
 		// parameter value deleted the FIRST-CREATED record:

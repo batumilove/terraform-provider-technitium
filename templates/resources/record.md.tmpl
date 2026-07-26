@@ -73,7 +73,7 @@ records match on the first three:
 * **Changing one merges the two.** An in-place update rewrites one record onto the other,
   leaving a single record where there were two — again reported as success.
 
-Verified against Technitium DNS Server 15.4.
+Verified against Technitium DNS Server 15.2 and 15.4.
 
 **What the provider does about it.** Changing `dnssec_validation` is treated as requiring
 replacement, so the provider never issues the in-place update that merges records. That

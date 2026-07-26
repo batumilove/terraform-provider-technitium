@@ -27,16 +27,16 @@ type ZoneDataSource struct {
 
 // ZoneDataSourceModel describes the data source data model.
 type ZoneDataSourceModel struct {
-	ID                  types.String `tfsdk:"id"`
-	Name                types.String `tfsdk:"name"`
-	Type                types.String `tfsdk:"type"`
-	Disabled            types.Bool   `tfsdk:"disabled"`
-	DNSSECStatus        types.String `tfsdk:"dnssec_status"`
-	SOASerial           types.Int64  `tfsdk:"soa_serial"`
-	ZoneTransfer        types.String `tfsdk:"zone_transfer"`
-	ZoneTransferACL     types.List   `tfsdk:"zone_transfer_acl"`
-	Notify              types.String `tfsdk:"notify"`
-	NotifyNameServers   types.List   `tfsdk:"notify_name_servers"`
+	ID                types.String `tfsdk:"id"`
+	Name              types.String `tfsdk:"name"`
+	Type              types.String `tfsdk:"type"`
+	Disabled          types.Bool   `tfsdk:"disabled"`
+	DNSSECStatus      types.String `tfsdk:"dnssec_status"`
+	SOASerial         types.Int64  `tfsdk:"soa_serial"`
+	ZoneTransfer      types.String `tfsdk:"zone_transfer"`
+	ZoneTransferACL   types.List   `tfsdk:"zone_transfer_acl"`
+	Notify            types.String `tfsdk:"notify"`
+	NotifyNameServers types.List   `tfsdk:"notify_name_servers"`
 }
 
 func (d *ZoneDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {

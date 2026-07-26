@@ -24,13 +24,13 @@ type RecordDataSource struct {
 }
 
 type RecordDataSourceModel struct {
-	ID       types.String          `tfsdk:"id"`
-	Zone     types.String          `tfsdk:"zone"`
-	Name     types.String          `tfsdk:"name"`
-	Type     types.String          `tfsdk:"type"`
-	Value    types.String          `tfsdk:"value"`
-	TTL      types.Int64           `tfsdk:"ttl"`
-	Records  []RecordDataItemModel `tfsdk:"records"`
+	ID      types.String          `tfsdk:"id"`
+	Zone    types.String          `tfsdk:"zone"`
+	Name    types.String          `tfsdk:"name"`
+	Type    types.String          `tfsdk:"type"`
+	Value   types.String          `tfsdk:"value"`
+	TTL     types.Int64           `tfsdk:"ttl"`
+	Records []RecordDataItemModel `tfsdk:"records"`
 }
 
 type RecordDataItemModel struct {

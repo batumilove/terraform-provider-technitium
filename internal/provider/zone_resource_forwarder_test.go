@@ -22,7 +22,7 @@ import (
 // That behaviour was previously covered only by a httptest mock
 // (TestZoneCreate_ForwarderCreatesEmptyZone), which asserts the query string the
 // client *sends* and therefore cannot detect a server that rejects it. Verified
-// against live Technitium 15.4:
+// against live Technitium 15.2 and 15.4:
 //
 //	POST /api/zones/create?zone=X&type=Forwarder
 //	  -> {"status":"error","errorMessage":"Parameter 'forwarder' missing."}

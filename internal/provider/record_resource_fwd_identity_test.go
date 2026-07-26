@@ -33,10 +33,10 @@ func fwdModel(forwarder, protocol string, priority int64, dnssec *bool) *RecordR
 // the delete request states it too. This asserts the REQUEST SHAPE only.
 //
 // It deliberately does not claim the server disambiguates. Measured against live
-// Technitium 15.4, delete IGNORES dnssecValidation when matching: with two
+// Technitium 15.2 and 15.4, delete IGNORES dnssecValidation when matching: with two
 // records differing only by this field, all four combinations of creation order
 // and parameter value removed the FIRST-CREATED record. A colliding pair
-// therefore cannot be individually destroyed through the 15.4 API. Sending the
+// therefore cannot be individually destroyed through the 15.2 and 15.4 APIs. Sending the
 // parameter makes the request express the caller's intent and starts working if
 // the server ever honours it; the provider contains the problem by marking
 // dnssec_validation RequiresReplace so it never attempts an in-place update,

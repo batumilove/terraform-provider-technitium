@@ -15,6 +15,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -137,8 +138,28 @@ func (r *RecordResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 				Optional:    true,
 			},
 			"dnssec_validation": schema.BoolAttribute{
-				Description: "Whether DNSSEC validation must be done for this FWD record.",
-				Optional:    true,
+				Description: "Whether DNSSEC validation must be done for this FWD record. " +
+					"Changing this forces a new record, because the Technitium API cannot " +
+					"update it unambiguously when two FWD records differ only by this field.",
+				Optional: true,
+				PlanModifiers: []planmodifier.Bool{
+					// RequiresReplace, not in-place update. dnssecValidation is part of
+					// the FWD record's identity (see buildRecordID), but the update API
+					// treats it as a SETTABLE value, not an identifier: there is no
+					// newDnssecValidation parameter, so a record can only be located by
+					// forwarder/protocol/forwarderPriority. Measured against Technitium
+					// 15.4 with two records differing only by this field — an update
+					// rewrote one onto the other and the two COLLAPSED INTO ONE, with
+					// the API returning status "ok". Replacing routes the change through
+					// delete+create, which is well-defined for the ordinary single-record
+					// case. It does NOT rescue an existing colliding pair: delete ignores
+					// dnssecValidation when matching (see buildDeleteParams), so two FWD
+					// records differing only by this field cannot be addressed
+					// individually through the 15.4 API at all. The provider can keep
+					// them distinct in state — that is what buildRecordID fixes — but
+					// acting on one without disturbing the other is a server-side gap.
+					boolplanmodifier.RequiresReplace(),
+				},
 			},
 			"proxy_type": schema.StringAttribute{
 				Description: "Proxy type for FWD records: NoProxy, DefaultProxy, Http, or Socks5.",
@@ -608,8 +629,22 @@ func (r *RecordResource) buildUpdateParams(state, plan *RecordResourceModel) map
 		if !plan.ForwarderPriority.IsNull() {
 			params["newForwarderPriority"] = fmt.Sprintf("%d", plan.ForwarderPriority.ValueInt64())
 		}
-		if !plan.DNSSECValidation.IsNull() {
+		// Always send the current value, falling back to state when the config
+		// omits the attribute. Technitium treats a MISSING dnssecValidation on
+		// update as false rather than "leave alone": verified against 15.4, a
+		// TTL-only update silently flipped a dnssec=true record to false. Since
+		// the attribute is Optional and not Computed, a user who never writes it
+		// in HCL plans null on every apply, so without this fallback any
+		// unrelated update would quietly disable DNSSEC validation.
+		//
+		// dnssec_validation is RequiresReplace, so plan and state agree here for
+		// any update that actually reaches this code; the fallback exists for the
+		// null-plan case, not to reconcile a change.
+		switch {
+		case !plan.DNSSECValidation.IsNull():
 			params["dnssecValidation"] = fmt.Sprintf("%t", plan.DNSSECValidation.ValueBool())
+		case !state.DNSSECValidation.IsNull():
+			params["dnssecValidation"] = fmt.Sprintf("%t", state.DNSSECValidation.ValueBool())
 		}
 		addOptionalFWDProxyParams(params, plan)
 	default:
@@ -658,6 +693,25 @@ func (r *RecordResource) buildDeleteParams(model *RecordResourceModel) map[strin
 		}
 		if !model.ForwarderPriority.IsNull() {
 			params["forwarderPriority"] = fmt.Sprintf("%d", model.ForwarderPriority.ValueInt64())
+		}
+		// Sent for completeness and forward compatibility. Be clear about what
+		// this does NOT do: Technitium 15.4 IGNORES dnssecValidation when
+		// matching a record to delete. Measured with two FWD records differing
+		// only by this field, all four combinations of creation order and
+		// parameter value deleted the FIRST-CREATED record:
+		//
+		//   created true,false + delete dnssecValidation=true  -> True deleted
+		//   created true,false + delete dnssecValidation=false -> True deleted
+		//   created false,true + delete dnssecValidation=true  -> False deleted
+		//   created false,true + delete dnssecValidation=false -> False deleted
+		//
+		// So a colliding pair CANNOT be individually destroyed through this API,
+		// with or without this parameter. Sending it costs nothing, makes the
+		// request state the caller's intent, and starts working the day the
+		// server honours it. It is not a fix — see the schema note on
+		// dnssec_validation for the limitation and how the provider contains it.
+		if !model.DNSSECValidation.IsNull() {
+			params["dnssecValidation"] = fmt.Sprintf("%t", model.DNSSECValidation.ValueBool())
 		}
 	}
 

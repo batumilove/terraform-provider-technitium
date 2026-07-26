@@ -138,6 +138,62 @@ resource "technitium_record" "cloudflare_fallback" {
 }
 ```
 
+#### DNSSEC validation on forwarders
+
+~> **Do not define two `FWD` records that share the same `value`, `protocol` and
+`forwarder_priority` and differ only by `dnssec_validation`.** Technitium cannot tell
+such records apart, and Terraform cannot protect you from it. You may silently lose a
+record.
+
+You do not need to know anything about DNSSEC for this to affect you — it is enough that
+two forwarder records look identical apart from that one true/false setting.
+
+**What goes wrong.** The Technitium API identifies a forwarder record by its forwarder
+address, protocol and priority. `dnssec_validation` is not part of that lookup, so when two
+records match on the first three:
+
+* **Destroying one destroys the wrong one.** The API deletes whichever record was created
+  first and reports success. Terraform believes it removed the resource you asked for.
+* **Changing one merges the two.** An in-place update rewrites one record onto the other,
+  leaving a single record where there were two — again reported as success.
+
+Verified against Technitium DNS Server 15.4.
+
+**What the provider does about it.** Changing `dnssec_validation` is treated as requiring
+replacement, so the provider never issues the in-place update that merges records. That
+protects the ordinary case of a single forwarder whose setting you want to change. It
+cannot rescue a pair that already collides, because the API offers no way to address one
+without the other.
+
+**How to stay safe.** Give forwarders that should coexist a distinguishing
+`forwarder_priority` (or a different `protocol`). Priority is part of the record's identity,
+so records that differ by it are addressed correctly:
+
+```hcl
+resource "technitium_record" "validating" {
+  zone               = technitium_zone.fwd.name
+  name               = technitium_zone.fwd.name
+  type               = "FWD"
+  value              = "1.1.1.1"
+  protocol           = "Udp"
+  forwarder_priority = 1
+  dnssec_validation  = true
+}
+
+resource "technitium_record" "non_validating" {
+  zone               = technitium_zone.fwd.name
+  name               = technitium_zone.fwd.name
+  type               = "FWD"
+  value              = "1.1.1.1"
+  protocol           = "Udp"
+  forwarder_priority = 2 # distinct priority keeps the two records addressable
+  dnssec_validation  = false
+}
+```
+
+If you have already created a colliding pair, remove both records and recreate them with
+distinct priorities rather than trying to delete one.
+
 ### Multiple Records at Same Name (Round-Robin)
 
 ```hcl
@@ -187,6 +243,9 @@ resource "technitium_record" "web2" {
 * `forwarder_priority` - (Optional, Integer) Priority for `FWD` records. Lower values are queried first.
 
 * `dnssec_validation` - (Optional, Boolean) Enable DNSSEC validation for `FWD` records.
+  Changing this value forces the record to be **replaced** (destroyed and recreated) rather
+  than updated in place. See [DNSSEC validation on forwarders](#dnssec-validation-on-forwarders)
+  before defining two forwarders that differ only by this setting.
 
 * `proxy_type`, `proxy_address`, `proxy_port`, `proxy_username`, `proxy_password` - (Optional) Proxy settings for `FWD` records. `proxy_password` is sensitive.
 

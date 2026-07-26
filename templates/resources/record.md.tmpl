@@ -37,14 +37,29 @@ Manages a DNS record in a Technitium DNS zone. Supports A, AAAA, CNAME, MX, TXT,
 
 ### FWD Forwarder Records
 
+Forwarder zones are created empty; each upstream forwarder is then managed as its own
+`technitium_record` resource. The simplest case is a single forwarder:
+
+{{codefile "hcl" "examples/resources/technitium_record/fwd-record-simple.tf"}}
+
+A fuller example, with DNSSEC validation over DNS-over-TLS and a plain fallback:
+
 {{codefile "hcl" "examples/resources/technitium_record/fwd-record.tf"}}
+
+Conditional forwarding — send a single internal namespace to the resolvers authoritative
+for it, with a redundant pair of upstreams:
+
+{{codefile "hcl" "examples/resources/technitium_record/fwd-record-conditional.tf"}}
 
 #### DNSSEC validation on forwarders
 
-~> **Do not define two `FWD` records that share the same `value`, `protocol` and
-`forwarder_priority` and differ only by `dnssec_validation`.** Technitium cannot tell
-such records apart, and Terraform cannot protect you from it. You may silently lose a
-record.
+**If you have a single forwarder, none of this applies** — `dnssec_validation` is optional,
+and leaving it out is fine.
+
+~> **With several forwarders on one zone, do not let any two differ only by
+`dnssec_validation`.** If two `FWD` records share the same `value`, `protocol` and
+`forwarder_priority`, Technitium cannot tell them apart, and you may silently lose one.
+Terraform cannot protect you from it.
 
 You do not need to know anything about DNSSEC for this to affect you — it is enough that
 two forwarder records look identical apart from that one true/false setting.
@@ -67,8 +82,9 @@ cannot rescue a pair that already collides, because the API offers no way to add
 without the other.
 
 **How to stay safe.** Give forwarders that should coexist a distinguishing
-`forwarder_priority` (or a different `protocol`). Priority is part of the record's identity,
-so records that differ by it are addressed correctly:
+`forwarder_priority` (or a different `value` or `protocol`). All three are part of the
+record's identity, so records that differ by any of them are addressed correctly. Priority
+is usually the natural choice, since it also controls query order — lower is tried first:
 
 ```hcl
 resource "technitium_record" "validating" {

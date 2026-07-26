@@ -110,7 +110,35 @@ resource "technitium_record" "ptr" {
 
 ### FWD Forwarder Records
 
+Forwarder zones are created empty; each upstream forwarder is then managed as its own
+`technitium_record` resource. The simplest case is a single forwarder:
+
 ```hcl
+# Simplest case: forward everything to one upstream resolver.
+#
+# A Forwarder zone is created empty, then the forwarder itself is a separate
+# FWD record. dnssec_validation is optional and can be left out entirely — with
+# a single forwarder there is nothing for it to be confused with.
+resource "technitium_zone" "forwarder" {
+  name = "."
+  type = "Forwarder"
+}
+
+resource "technitium_record" "upstream" {
+  zone      = technitium_zone.forwarder.name
+  name      = "."
+  type      = "FWD"
+  value     = "1.1.1.1"
+  protocol  = "Udp"
+  overwrite = false
+}
+```
+
+A fuller example, with DNSSEC validation over DNS-over-TLS and a plain fallback:
+
+```hcl
+# Full example: a primary forwarder with DNSSEC validation over DNS-over-TLS,
+# plus a plain fallback.
 resource "technitium_zone" "root_forwarder" {
   name = "."
   type = "Forwarder"
@@ -127,6 +155,15 @@ resource "technitium_record" "quad9_forwarder" {
   overwrite          = false
 }
 
+# Lower priority is queried first, so this is the fallback. It also differs from
+# the record above by value and protocol, which keeps the two independently
+# addressable.
+#
+# When several forwarders share a zone, make sure any two differ by something
+# other than dnssec_validation alone — value, protocol or forwarder_priority.
+# Records that differ ONLY by dnssec_validation cannot be told apart by the
+# Technitium API and one of them can be silently lost. See "DNSSEC validation on
+# forwarders" in the resource documentation.
 resource "technitium_record" "cloudflare_fallback" {
   zone               = technitium_zone.root_forwarder.name
   name               = "."
@@ -134,16 +171,61 @@ resource "technitium_record" "cloudflare_fallback" {
   value              = "1.1.1.1"
   protocol           = "Udp"
   forwarder_priority = 2
+  dnssec_validation  = false
   overwrite          = false
 }
 ```
 
+Conditional forwarding — send a single internal namespace to the resolvers authoritative
+for it, with a redundant pair of upstreams:
+
+```hcl
+# Conditional forwarding: send one internal namespace to the resolvers that are
+# authoritative for it, while everything else follows the server's normal path.
+#
+# The Forwarder zone is named for the domain being forwarded rather than "." —
+# only queries under that domain are forwarded.
+resource "technitium_zone" "corp_internal" {
+  name = "corp.example.net"
+  type = "Forwarder"
+}
+
+# Two upstreams for redundancy. They differ by value, so they remain
+# individually addressable; the priorities set which is tried first.
+resource "technitium_record" "corp_dns_primary" {
+  zone               = technitium_zone.corp_internal.name
+  name               = technitium_zone.corp_internal.name
+  type               = "FWD"
+  value              = "10.10.0.53"
+  protocol           = "Udp"
+  forwarder_priority = 1
+  overwrite          = false
+}
+
+resource "technitium_record" "corp_dns_secondary" {
+  zone               = technitium_zone.corp_internal.name
+  name               = technitium_zone.corp_internal.name
+  type               = "FWD"
+  value              = "10.20.0.53"
+  protocol           = "Udp"
+  forwarder_priority = 2
+  overwrite          = false
+}
+
+# Internal resolvers usually serve names that do not validate publicly, so
+# DNSSEC validation is left off here. Set dnssec_validation = true only for
+# upstreams you expect to return signed, publicly-validatable answers.
+```
+
 #### DNSSEC validation on forwarders
 
-~> **Do not define two `FWD` records that share the same `value`, `protocol` and
-`forwarder_priority` and differ only by `dnssec_validation`.** Technitium cannot tell
-such records apart, and Terraform cannot protect you from it. You may silently lose a
-record.
+**If you have a single forwarder, none of this applies** — `dnssec_validation` is optional,
+and leaving it out is fine.
+
+~> **With several forwarders on one zone, do not let any two differ only by
+`dnssec_validation`.** If two `FWD` records share the same `value`, `protocol` and
+`forwarder_priority`, Technitium cannot tell them apart, and you may silently lose one.
+Terraform cannot protect you from it.
 
 You do not need to know anything about DNSSEC for this to affect you — it is enough that
 two forwarder records look identical apart from that one true/false setting.
@@ -166,8 +248,9 @@ cannot rescue a pair that already collides, because the API offers no way to add
 without the other.
 
 **How to stay safe.** Give forwarders that should coexist a distinguishing
-`forwarder_priority` (or a different `protocol`). Priority is part of the record's identity,
-so records that differ by it are addressed correctly:
+`forwarder_priority` (or a different `value` or `protocol`). All three are part of the
+record's identity, so records that differ by any of them are addressed correctly. Priority
+is usually the natural choice, since it also controls query order — lower is tried first:
 
 ```hcl
 resource "technitium_record" "validating" {

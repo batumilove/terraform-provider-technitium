@@ -320,9 +320,24 @@ func (r *RecordResource) Read(ctx context.Context, req resource.ReadRequest, res
 			if priority, ok := rec.RData["forwarderPriority"]; ok {
 				state.ForwarderPriority = types.Int64Value(int64(toFloat64(priority)))
 			}
-			if dnssecValidation, ok := rec.RData["dnssecValidation"]; ok {
-				if v, ok := dnssecValidation.(bool); ok {
-					state.DNSSECValidation = types.BoolValue(v)
+			// Only refresh dnssec_validation when it is already tracked. The
+			// attribute is Optional and NOT Computed, so a config that omits it
+			// plans as null; adopting the server's value here surfaces a permanent
+			// `false -> null` diff, and because the attribute is RequiresReplace
+			// that diff reads as "must be replaced" on every plan — a forced
+			// destroy/create of a record nobody touched.
+			//
+			// Caught by TestAccZoneResource_ForwarderConditional, whose upstreams
+			// deliberately omit the attribute (the common case for internal
+			// resolvers): the post-apply refresh plan was non-empty and both
+			// records were marked for replacement.
+			//
+			// Users who DO set the attribute still get real drift detection.
+			if !state.DNSSECValidation.IsNull() {
+				if dnssecValidation, ok := rec.RData["dnssecValidation"]; ok {
+					if v, ok := dnssecValidation.(bool); ok {
+						state.DNSSECValidation = types.BoolValue(v)
+					}
 				}
 			}
 

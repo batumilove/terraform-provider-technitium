@@ -479,9 +479,18 @@ func (r *ZoneResource) readZoneState(ctx context.Context, model *ZoneResourceMod
 		return fmt.Errorf("reading zone options: %w", err)
 	}
 
-	model.ID = types.StringValue(zone.Name)
-	model.Name = types.StringValue(zone.Name)
-	model.Type = types.StringValue(zone.Type)
+	zoneName := zone.Name
+	if zoneName == "" {
+		zoneName = model.Name.ValueString()
+	}
+	zoneType := zone.Type
+	if zoneType == "" {
+		zoneType = model.Type.ValueString()
+	}
+
+	model.ID = types.StringValue(zoneName)
+	model.Name = types.StringValue(zoneName)
+	model.Type = types.StringValue(zoneType)
 	model.DNSSECStatus = types.StringValue(zone.DNSSECStatus)
 
 	if zone.Disabled {
@@ -530,11 +539,17 @@ func (r *ZoneResource) readZoneState(ctx context.Context, model *ZoneResourceMod
 		return fmt.Errorf("listing zones for SOA serial: %w", err)
 	}
 	for _, z := range zones {
-		if strings.EqualFold(z.Name, zone.Name) {
+		if strings.EqualFold(z.Name, zoneName) || (zoneName == "." && z.Name == "") {
 			model.SOASerial = types.Int64Value(int64(z.SOASerial))
 			break
 		}
 	}
+	if model.SOASerial.IsUnknown() || model.SOASerial.IsNull() {
+		model.SOASerial = types.Int64Value(0)
+	}
+
+	// Set SOASerialDateScheme to match provider default (true)
+	model.SOASerialDateScheme = types.BoolValue(true)
 
 	// Read DNSSEC state
 	if zone.DNSSECStatus != "Unsigned" && zone.DNSSECStatus != "" {

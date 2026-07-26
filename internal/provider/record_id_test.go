@@ -193,22 +193,29 @@ func TestBuildRecordID_FWD_DNSSEC(t *testing.T) {
 }
 
 func TestParseImportValueSegment_FWD(t *testing.T) {
-	value, priority, _, _, _, protocol, err := parseImportValueSegment("FWD", "dns.quad9.net:853 (9.9.9.9):Tls:1")
+	f, err := parseImportValueSegment("FWD", "dns.quad9.net:853 (9.9.9.9):Tls:1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if value != "dns.quad9.net:853 (9.9.9.9)" || protocol != "Tls" || priority != 1 {
-		t.Fatalf("parsed FWD = value %q protocol %q priority %d", value, protocol, priority)
+	if f.Value != "dns.quad9.net:853 (9.9.9.9)" || f.Protocol != "Tls" || f.Priority != 1 {
+		t.Fatalf("parsed FWD = value %q protocol %q priority %d", f.Value, f.Protocol, f.Priority)
+	}
+	if f.DNSSECValidation != nil {
+		t.Errorf("legacy 3-field ID must leave DNSSECValidation nil, got %v", *f.DNSSECValidation)
 	}
 }
 
 func TestParseImportValueSegment_FWD_DNSSEC(t *testing.T) {
+	boolPtr := func(b bool) *bool { return &b }
 	tests := []struct {
-		name            string
-		valueSegment    string
-		wantForwarder   string
-		wantProtocol    string
-		wantPriority    int64
+		name          string
+		valueSegment  string
+		wantForwarder string
+		wantProtocol  string
+		wantPriority  int64
+		// nil means the ID did not state dnssec (legacy 3-field form), which is
+		// distinct from an explicit false.
+		wantDNSSEC *bool
 	}{
 		{
 			name:          "with dnssec true",
@@ -216,6 +223,7 @@ func TestParseImportValueSegment_FWD_DNSSEC(t *testing.T) {
 			wantForwarder: "1.1.1.1",
 			wantProtocol:  "Udp",
 			wantPriority:  1,
+			wantDNSSEC:    boolPtr(true),
 		},
 		{
 			name:          "with dnssec false",
@@ -223,6 +231,7 @@ func TestParseImportValueSegment_FWD_DNSSEC(t *testing.T) {
 			wantForwarder: "1.1.1.1",
 			wantProtocol:  "Udp",
 			wantPriority:  1,
+			wantDNSSEC:    boolPtr(false),
 		},
 		{
 			name:          "without dnssec (backward compat)",
@@ -230,6 +239,7 @@ func TestParseImportValueSegment_FWD_DNSSEC(t *testing.T) {
 			wantForwarder: "1.1.1.1",
 			wantProtocol:  "Udp",
 			wantPriority:  1,
+			wantDNSSEC:    nil,
 		},
 		{
 			name:          "forwarder with colon in name + dnssec",
@@ -237,29 +247,57 @@ func TestParseImportValueSegment_FWD_DNSSEC(t *testing.T) {
 			wantForwarder: "dns.quad9.net:853 (9.9.9.9)",
 			wantProtocol:  "Tls",
 			wantPriority:  1,
+			wantDNSSEC:    boolPtr(true),
+		},
+		{
+			// A DoH forwarder contains "://", so a count-based field test would
+			// misread this. Parsing from the right must still recover all four
+			// fields intact.
+			name:          "DoH URL forwarder + dnssec",
+			valueSegment:  "https://cloudflare-dns.com/dns-query:Https:1:true",
+			wantForwarder: "https://cloudflare-dns.com/dns-query",
+			wantProtocol:  "Https",
+			wantPriority:  1,
+			wantDNSSEC:    boolPtr(true),
+		},
+		{
+			name:          "DoH URL forwarder, legacy 3-field",
+			valueSegment:  "https://dns.google/dns-query:Https:2",
+			wantForwarder: "https://dns.google/dns-query",
+			wantProtocol:  "Https",
+			wantPriority:  2,
+			wantDNSSEC:    nil,
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			value, priority, _, _, _, protocol, err := parseImportValueSegment("FWD", tc.valueSegment)
+			f, err := parseImportValueSegment("FWD", tc.valueSegment)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if value != tc.wantForwarder {
-				t.Errorf("value = %q, want %q", value, tc.wantForwarder)
+			if f.Value != tc.wantForwarder {
+				t.Errorf("value = %q, want %q", f.Value, tc.wantForwarder)
 			}
-			if protocol != tc.wantProtocol {
-				t.Errorf("protocol = %q, want %q", protocol, tc.wantProtocol)
+			if f.Protocol != tc.wantProtocol {
+				t.Errorf("protocol = %q, want %q", f.Protocol, tc.wantProtocol)
 			}
-			if priority != tc.wantPriority {
-				t.Errorf("priority = %d, want %d", priority, tc.wantPriority)
+			if f.Priority != tc.wantPriority {
+				t.Errorf("priority = %d, want %d", f.Priority, tc.wantPriority)
+			}
+			switch {
+			case tc.wantDNSSEC == nil && f.DNSSECValidation != nil:
+				t.Errorf("DNSSECValidation = %v, want nil (legacy form must not fabricate a value)", *f.DNSSECValidation)
+			case tc.wantDNSSEC != nil && f.DNSSECValidation == nil:
+				t.Errorf("DNSSECValidation = nil, want %v", *tc.wantDNSSEC)
+			case tc.wantDNSSEC != nil && *f.DNSSECValidation != *tc.wantDNSSEC:
+				t.Errorf("DNSSECValidation = %v, want %v", *f.DNSSECValidation, *tc.wantDNSSEC)
 			}
 		})
 	}
 }
 
 func TestParseImportValueSegment_FWD_Invalid(t *testing.T) {
-	_, _, _, _, _, _, err := parseImportValueSegment("FWD", "1.1.1.1:Udp")
+	_, err := parseImportValueSegment("FWD", "1.1.1.1:Udp")
 	if err == nil {
 		t.Error("expected error for FWD with too few fields")
 	}
@@ -287,10 +325,10 @@ func TestRecordMatchesState_FWD(t *testing.T) {
 
 func TestRecordMatchesState_FWD_DNSSEC(t *testing.T) {
 	tests := []struct {
-		name      string
-		recDNSSEC float64
+		name        string
+		recDNSSEC   float64
 		stateDNSSEC bool
-		wantMatch bool
+		wantMatch   bool
 	}{
 		{"both true", 1, true, true},
 		{"both false", 0, false, true},
@@ -464,7 +502,8 @@ func TestParseImportValueSegment_SimpleTypes(t *testing.T) {
 	simpleTypes := []string{"A", "AAAA", "CNAME", "TXT", "PTR", "NS"}
 	for _, rt := range simpleTypes {
 		t.Run(rt, func(t *testing.T) {
-			value, priority, weight, port, caaFlags, caaTag, err := parseImportValueSegment(rt, "some-value")
+			f, err := parseImportValueSegment(rt, "some-value")
+			value, priority, weight, port, caaFlags, caaTag := f.Value, f.Priority, f.Weight, f.Port, f.CAAFlags, f.CAATag
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -479,7 +518,8 @@ func TestParseImportValueSegment_SimpleTypes(t *testing.T) {
 }
 
 func TestParseImportValueSegment_MX(t *testing.T) {
-	value, priority, weight, port, caaFlags, caaTag, err := parseImportValueSegment("MX", "mail.example.com:10")
+	f, err := parseImportValueSegment("MX", "mail.example.com:10")
+	value, priority, weight, port, caaFlags, caaTag := f.Value, f.Priority, f.Weight, f.Port, f.CAAFlags, f.CAATag
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -495,21 +535,22 @@ func TestParseImportValueSegment_MX(t *testing.T) {
 }
 
 func TestParseImportValueSegment_MX_InvalidPriority(t *testing.T) {
-	_, _, _, _, _, _, err := parseImportValueSegment("MX", "mail.example.com:abc")
+	_, err := parseImportValueSegment("MX", "mail.example.com:abc")
 	if err == nil {
 		t.Error("expected error for non-numeric priority")
 	}
 }
 
 func TestParseImportValueSegment_MX_NoColon(t *testing.T) {
-	_, _, _, _, _, _, err := parseImportValueSegment("MX", "mail.example.com")
+	_, err := parseImportValueSegment("MX", "mail.example.com")
 	if err == nil {
 		t.Error("expected error for MX without priority")
 	}
 }
 
 func TestParseImportValueSegment_SRV(t *testing.T) {
-	value, priority, weight, port, caaFlags, caaTag, err := parseImportValueSegment("SRV", "sip.example.com:10:60:5060")
+	f, err := parseImportValueSegment("SRV", "sip.example.com:10:60:5060")
+	value, priority, weight, port, caaFlags, caaTag := f.Value, f.Priority, f.Weight, f.Port, f.CAAFlags, f.CAATag
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -531,21 +572,22 @@ func TestParseImportValueSegment_SRV(t *testing.T) {
 }
 
 func TestParseImportValueSegment_SRV_TooFewFields(t *testing.T) {
-	_, _, _, _, _, _, err := parseImportValueSegment("SRV", "sip.example.com:10:60")
+	_, err := parseImportValueSegment("SRV", "sip.example.com:10:60")
 	if err == nil {
 		t.Error("expected error for SRV with too few colon-separated fields")
 	}
 }
 
 func TestParseImportValueSegment_SRV_InvalidNumeric(t *testing.T) {
-	_, _, _, _, _, _, err := parseImportValueSegment("SRV", "sip.example.com:abc:60:5060")
+	_, err := parseImportValueSegment("SRV", "sip.example.com:abc:60:5060")
 	if err == nil {
 		t.Error("expected error for SRV with non-numeric priority")
 	}
 }
 
 func TestParseImportValueSegment_CAA(t *testing.T) {
-	value, priority, weight, port, caaFlags, caaTag, err := parseImportValueSegment("CAA", "letsencrypt.org:0:issue")
+	f, err := parseImportValueSegment("CAA", "letsencrypt.org:0:issue")
+	value, priority, weight, port, caaFlags, caaTag := f.Value, f.Priority, f.Weight, f.Port, f.CAAFlags, f.CAATag
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -564,7 +606,8 @@ func TestParseImportValueSegment_CAA(t *testing.T) {
 }
 
 func TestParseImportValueSegment_CAA_CriticalFlag(t *testing.T) {
-	value, _, _, _, caaFlags, caaTag, err := parseImportValueSegment("CAA", "ca.example.com:128:issuewild")
+	f, err := parseImportValueSegment("CAA", "ca.example.com:128:issuewild")
+	value, caaFlags, caaTag := f.Value, f.CAAFlags, f.CAATag
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -580,7 +623,7 @@ func TestParseImportValueSegment_CAA_CriticalFlag(t *testing.T) {
 }
 
 func TestParseImportValueSegment_CAA_TooFewFields(t *testing.T) {
-	_, _, _, _, _, _, err := parseImportValueSegment("CAA", "letsencrypt.org:0")
+	_, err := parseImportValueSegment("CAA", "letsencrypt.org:0")
 	if err == nil {
 		t.Error("expected error for CAA with too few colon-separated fields")
 	}

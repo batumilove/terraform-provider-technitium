@@ -70,6 +70,32 @@ func parseRecordID(id string) (zone, name, recordType, valueSegment string, err 
 	return parts[0], parts[1], parts[2], parts[3], nil
 }
 
+// importValueFields holds the type-specific fields decoded from the value
+// segment of a composite import ID.
+//
+// This is a named struct rather than a list of positional returns on purpose.
+// The previous signature returned a single shared string slot that CAA used for
+// its tag and FWD reused for its protocol, so ImportState read a variable named
+// caaTag and wrote it straight into the protocol attribute. That worked only by
+// coincidence of the two types sharing a slot, and it is exactly the kind of
+// thing that regresses silently when a new record type is added.
+type importValueFields struct {
+	Value    string
+	Priority int64
+	Weight   int64
+	Port     int64
+	CAAFlags int64
+	// CAATag is set for CAA records only.
+	CAATag string
+	// Protocol is set for FWD records only.
+	Protocol string
+	// DNSSECValidation is set for FWD records only, and is nil when the legacy
+	// 3-field form (forwarder:protocol:priority) was used. nil therefore means
+	// "the import ID did not state it", which is distinct from an explicit
+	// false — the caller must not set the attribute in that case.
+	DNSSECValidation *bool
+}
+
 // parseImportValueSegment extracts value and type-specific fields from the
 // value segment of an import ID.
 //
@@ -77,99 +103,108 @@ func parseRecordID(id string) (zone, name, recordType, valueSegment string, err 
 //   - MX: exchange:priority (parsed from right via LastIndex)
 //   - SRV: target:priority:weight:port (last 3 fields numeric, rest is target)
 //   - CAA: value:flags:tag (last 2 fields are flags+tag, rest is value)
-//   - FWD: forwarder:protocol:priority (last 2 fields are protocol+priority)
+//   - FWD: forwarder:protocol:priority[:dnssecValidation] (parsed from the
+//     right; the trailing dnssec field is optional for backward compatibility
+//     with IDs generated before it was part of the identity)
 //   - Simple types: entire segment is the value
-func parseImportValueSegment(recordType, valueSegment string) (
-	value string, priority, weight, port, caaFlags int64, caaTag string, err error,
-) {
+//
+// Parsing from the right matters for FWD: a forwarder may itself contain
+// colons (an IPv6 address, or a DoH URL such as
+// https://cloudflare-dns.com/dns-query), so the leading fields are rejoined.
+func parseImportValueSegment(recordType, valueSegment string) (importValueFields, error) {
+	fail := func(format string, args ...any) (importValueFields, error) {
+		return importValueFields{}, fmt.Errorf(format, args...)
+	}
+
 	switch recordType {
 	case "MX":
 		idx := strings.LastIndex(valueSegment, ":")
 		if idx < 0 {
-			return "", 0, 0, 0, 0, "", fmt.Errorf(
-				"invalid MX value segment %q: expected format exchange:priority", valueSegment)
+			return fail("invalid MX value segment %q: expected format exchange:priority", valueSegment)
 		}
-		value = valueSegment[:idx]
 		p, parseErr := strconv.ParseInt(valueSegment[idx+1:], 10, 64)
 		if parseErr != nil {
-			return "", 0, 0, 0, 0, "", fmt.Errorf(
-				"invalid MX priority in %q: %w", valueSegment, parseErr)
+			return fail("invalid MX priority in %q: %w", valueSegment, parseErr)
 		}
-		priority = p
-		return value, priority, 0, 0, 0, "", nil
+		return importValueFields{Value: valueSegment[:idx], Priority: p}, nil
 
 	case "SRV":
 		// Format: target:priority:weight:port
 		// Parse from the right: last 3 colon-separated fields are numeric.
 		parts := strings.Split(valueSegment, ":")
 		if len(parts) < 4 {
-			return "", 0, 0, 0, 0, "", fmt.Errorf(
-				"invalid SRV value segment %q: expected format target:priority:weight:port", valueSegment)
+			return fail("invalid SRV value segment %q: expected format target:priority:weight:port", valueSegment)
 		}
-		// Last 3 are priority, weight, port; everything before is the target.
-		portStr := parts[len(parts)-1]
-		weightStr := parts[len(parts)-2]
-		priorityStr := parts[len(parts)-3]
-		target := strings.Join(parts[:len(parts)-3], ":")
-
-		p, parseErr := strconv.ParseInt(priorityStr, 10, 64)
+		p, parseErr := strconv.ParseInt(parts[len(parts)-3], 10, 64)
 		if parseErr != nil {
-			return "", 0, 0, 0, 0, "", fmt.Errorf(
-				"invalid SRV priority in %q: %w", valueSegment, parseErr)
+			return fail("invalid SRV priority in %q: %w", valueSegment, parseErr)
 		}
-		w, parseErr := strconv.ParseInt(weightStr, 10, 64)
+		w, parseErr := strconv.ParseInt(parts[len(parts)-2], 10, 64)
 		if parseErr != nil {
-			return "", 0, 0, 0, 0, "", fmt.Errorf(
-				"invalid SRV weight in %q: %w", valueSegment, parseErr)
+			return fail("invalid SRV weight in %q: %w", valueSegment, parseErr)
 		}
-		pt, parseErr := strconv.ParseInt(portStr, 10, 64)
+		pt, parseErr := strconv.ParseInt(parts[len(parts)-1], 10, 64)
 		if parseErr != nil {
-			return "", 0, 0, 0, 0, "", fmt.Errorf(
-				"invalid SRV port in %q: %w", valueSegment, parseErr)
+			return fail("invalid SRV port in %q: %w", valueSegment, parseErr)
 		}
-		return target, p, w, pt, 0, "", nil
+		return importValueFields{
+			Value:    strings.Join(parts[:len(parts)-3], ":"),
+			Priority: p,
+			Weight:   w,
+			Port:     pt,
+		}, nil
 
 	case "FWD":
 		parts := strings.Split(valueSegment, ":")
 		if len(parts) < 3 {
-			return "", 0, 0, 0, 0, "", fmt.Errorf(
-				"invalid FWD value segment %q: expected format forwarder:protocol:priority[:dnssecValidation]", valueSegment)
+			return fail("invalid FWD value segment %q: expected format forwarder:protocol:priority[:dnssecValidation]", valueSegment)
 		}
+
+		// The trailing dnssec field is optional. Detect it by value rather than
+		// by field count: the forwarder may contain colons, so a count-based
+		// test cannot tell "4 fields because dnssec is present" from "4 fields
+		// because the forwarder had a colon in it".
+		var dnssec *bool
 		priorityIdx := len(parts) - 1
-		if parts[len(parts)-1] == "true" || parts[len(parts)-1] == "false" {
+		if last := parts[len(parts)-1]; last == "true" || last == "false" {
+			v := last == "true"
+			dnssec = &v
 			priorityIdx = len(parts) - 2
 		}
-		priorityStr := parts[priorityIdx]
-		protocol := parts[priorityIdx-1]
-		forwarder := strings.Join(parts[:priorityIdx-1], ":")
-		p, parseErr := strconv.ParseInt(priorityStr, 10, 64)
-		if parseErr != nil {
-			return "", 0, 0, 0, 0, "", fmt.Errorf(
-				"invalid FWD priority in %q: %w", valueSegment, parseErr)
+		if priorityIdx < 2 {
+			return fail("invalid FWD value segment %q: expected format forwarder:protocol:priority[:dnssecValidation]", valueSegment)
 		}
-		return forwarder, p, 0, 0, 0, protocol, nil
+
+		p, parseErr := strconv.ParseInt(parts[priorityIdx], 10, 64)
+		if parseErr != nil {
+			return fail("invalid FWD priority in %q: %w", valueSegment, parseErr)
+		}
+		return importValueFields{
+			Value:            strings.Join(parts[:priorityIdx-1], ":"),
+			Priority:         p,
+			Protocol:         parts[priorityIdx-1],
+			DNSSECValidation: dnssec,
+		}, nil
 
 	case "CAA":
 		// Format: value:flags:tag
 		// Parse from the right: last field is tag, second-to-last is flags.
 		parts := strings.Split(valueSegment, ":")
 		if len(parts) < 3 {
-			return "", 0, 0, 0, 0, "", fmt.Errorf(
-				"invalid CAA value segment %q: expected format value:flags:tag", valueSegment)
+			return fail("invalid CAA value segment %q: expected format value:flags:tag", valueSegment)
 		}
-		tag := parts[len(parts)-1]
-		flagsStr := parts[len(parts)-2]
-		val := strings.Join(parts[:len(parts)-2], ":")
-
-		f, parseErr := strconv.ParseInt(flagsStr, 10, 64)
+		f, parseErr := strconv.ParseInt(parts[len(parts)-2], 10, 64)
 		if parseErr != nil {
-			return "", 0, 0, 0, 0, "", fmt.Errorf(
-				"invalid CAA flags in %q: %w", valueSegment, parseErr)
+			return fail("invalid CAA flags in %q: %w", valueSegment, parseErr)
 		}
-		return val, 0, 0, 0, f, tag, nil
+		return importValueFields{
+			Value:    strings.Join(parts[:len(parts)-2], ":"),
+			CAAFlags: f,
+			CAATag:   parts[len(parts)-1],
+		}, nil
 
 	default:
-		return valueSegment, 0, 0, 0, 0, "", nil
+		return importValueFields{Value: valueSegment}, nil
 	}
 }
 

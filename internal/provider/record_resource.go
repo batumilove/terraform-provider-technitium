@@ -406,7 +406,8 @@ func (r *RecordResource) ImportState(ctx context.Context, req resource.ImportSta
 				"(e.g., example.com::www.example.com::A::192.0.2.1). "+
 				"For MX: zone::name::MX::exchange:priority. "+
 				"For SRV: zone::name::SRV::target:priority:weight:port. "+
-				"For CAA: zone::name::CAA::value:flags:tag.")
+				"For CAA: zone::name::CAA::value:flags:tag. "+
+				"For FWD: zone::name::FWD::forwarder:protocol:priority[:dnssecValidation].")
 		return
 	}
 
@@ -417,32 +418,35 @@ func (r *RecordResource) ImportState(ctx context.Context, req resource.ImportSta
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("overwrite"), false)...)
 
 	// Parse value segment for type-specific fields
-	value, priority, weight, port, caaFlags, caaTag, parseErr := parseImportValueSegment(recordType, valueSegment)
+	fields, parseErr := parseImportValueSegment(recordType, valueSegment)
 	if parseErr != nil {
 		resp.Diagnostics.AddError("Invalid import value segment", parseErr.Error())
 		return
 	}
 
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("value"), value)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("value"), fields.Value)...)
 
 	if recordType == "MX" {
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("priority"), priority)...)
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("priority"), fields.Priority)...)
 	}
 	if recordType == "SRV" {
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("priority"), priority)...)
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("weight"), weight)...)
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("port"), port)...)
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("priority"), fields.Priority)...)
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("weight"), fields.Weight)...)
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("port"), fields.Port)...)
 	}
 	if recordType == "CAA" {
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("caa_flags"), caaFlags)...)
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("caa_tag"), caaTag)...)
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("caa_flags"), fields.CAAFlags)...)
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("caa_tag"), fields.CAATag)...)
 	}
 	if recordType == "FWD" {
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("protocol"), caaTag)...)
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("forwarder_priority"), priority)...)
-		parts := strings.Split(valueSegment, ":")
-		if len(parts) >= 4 && (parts[len(parts)-1] == "true" || parts[len(parts)-1] == "false") {
-			resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("dnssec_validation"), parts[len(parts)-1] == "true")...)
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("protocol"), fields.Protocol)...)
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("forwarder_priority"), fields.Priority)...)
+		// Only set dnssec_validation when the import ID actually stated it. A
+		// legacy 3-field ID leaves this nil, and writing an explicit false there
+		// would fabricate state the user never supplied — which would then show
+		// up as spurious drift on the next plan.
+		if fields.DNSSECValidation != nil {
+			resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("dnssec_validation"), *fields.DNSSECValidation)...)
 		}
 	}
 }

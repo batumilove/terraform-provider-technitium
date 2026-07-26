@@ -23,7 +23,12 @@ const recordIDSeparator = "::"
 //   - MX: zone::name::MX::exchange:priority
 //   - SRV: zone::name::SRV::target:priority:weight:port
 //   - CAA: zone::name::CAA::value:flags:tag
-//   - FWD: zone::name::FWD::forwarder:protocol:priority
+//   - FWD: zone::name::FWD::forwarder:protocol:priority:dnssecValidation
+//
+// The FWD form carries dnssecValidation because forwarder/protocol/priority
+// alone do not uniquely identify a record — two forwarders may differ only by
+// that flag. parseImportValueSegment still accepts the legacy 3-field form, so
+// IDs generated before this existed continue to import.
 func buildRecordID(model *RecordResourceModel) string {
 	zone := model.Zone.ValueString()
 	name := model.Name.ValueString()

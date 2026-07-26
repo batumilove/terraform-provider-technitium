@@ -98,6 +98,17 @@ func (c *Client) RecordGet(ctx context.Context, domain, zone string) ([]Record, 
 // For CNAME: "cname" (new value)
 // For MX: "exchange" (current), "newExchange" (new), "preference", "newPreference"
 // etc.
+//
+// 🚩 The current/new pairing does NOT extend to every field. FWD records have
+// "forwarder"/"newForwarder", "protocol"/"newProtocol" and
+// "forwarderPriority"/"newForwarderPriority", but "dnssecValidation" has no
+// "new" counterpart — it is the new value, and the old one cannot be supplied
+// as an identifier. Two FWD records differing only by that flag therefore
+// cannot be updated independently: the update rewrites one onto the other and
+// they collapse into a single record, reported as status "ok". Omitting
+// "dnssecValidation" entirely is also not "leave unchanged" — it resets the
+// record to false. Both verified on Technitium 15.2 and 15.4 and reported
+// upstream as TechnitiumSoftware/DnsServer#2069.
 func (c *Client) RecordUpdate(ctx context.Context, domain, zone, recordType string, ttl int, params map[string]string) error {
 	qp := url.Values{
 		"domain": {domain},
@@ -129,6 +140,13 @@ func (c *Client) RecordUpdate(ctx context.Context, domain, zone, recordType stri
 //   - NS: "nameServer"
 //   - CAA: "flags", "tag", "value"
 //   - FWD: "protocol", "forwarder", "forwarderPriority", "dnssecValidation"
+//
+// 🚩 "dnssecValidation" appears above because the provider sends it, NOT because
+// the server matches on it. Technitium 15.2 and 15.4 ignore it when selecting
+// which record to delete: given two FWD records identical apart from that flag,
+// the first-created one is removed whatever value is supplied, and the call
+// still returns status "ok". Do not assume this call can target one of a
+// colliding pair. Reported upstream as TechnitiumSoftware/DnsServer#2069.
 func (c *Client) RecordDelete(ctx context.Context, domain, zone, recordType string, params map[string]string) error {
 	qp := url.Values{
 		"domain": {domain},

@@ -81,7 +81,7 @@ Manages a DNS record in a Technitium DNS zone. Supports A, AAAA, CNAME, MX, TXT,
 
 In addition to the arguments above, the following computed attributes are exported:
 
-* `id` - Record identifier (`zone::name::type::value` composite key). For MX records: `zone::name::MX::exchange:priority`. For SRV records: `zone::name::SRV::target:priority:weight:port`. For CAA records: `zone::name::CAA::value:flags:tag`. For FWD records: `zone::name::FWD::forwarder:protocol:priority`.
+* `id` - Record identifier (`zone::name::type::value` composite key). For MX records: `zone::name::MX::exchange:priority`. For SRV records: `zone::name::SRV::target:priority:weight:port`. For CAA records: `zone::name::CAA::value:flags:tag`. For FWD records: `zone::name::FWD::forwarder:protocol:priority:dnssecValidation`. The `dnssecValidation` field distinguishes otherwise-identical forwarders; the legacy 3-field form `forwarder:protocol:priority` is still accepted on import for backward compatibility.
 
 * `last_modified` - Timestamp of last modification.
 
@@ -102,6 +102,9 @@ terraform import technitium_record.sip "example.com::_sip._tcp.example.com::SRV:
 # CAA record (value:flags:tag)
 terraform import technitium_record.caa "example.com::example.com::CAA::letsencrypt.org:0:issue"
 
-# FWD record (forwarder:protocol:priority)
-terraform import technitium_record.forwarder ".::.::FWD::1.1.1.1:Udp:2"
+# FWD record (forwarder:protocol:priority:dnssecValidation)
+terraform import technitium_record.forwarder ".::.::FWD::1.1.1.1:Udp:2:true"
+
+# FWD record, legacy 3-field form (still accepted; dnssec_validation is left unset)
+terraform import technitium_record.forwarder_legacy ".::.::FWD::1.1.1.1:Udp:2"
 ```

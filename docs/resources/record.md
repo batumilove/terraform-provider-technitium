@@ -108,6 +108,36 @@ resource "technitium_record" "ptr" {
 }
 ```
 
+### FWD Forwarder Records
+
+```hcl
+resource "technitium_zone" "root_forwarder" {
+  name = "."
+  type = "Forwarder"
+}
+
+resource "technitium_record" "quad9_forwarder" {
+  zone               = technitium_zone.root_forwarder.name
+  name               = "."
+  type               = "FWD"
+  value              = "dns.quad9.net:853 (9.9.9.9)"
+  protocol           = "Tls"
+  forwarder_priority = 1
+  dnssec_validation  = true
+  overwrite          = false
+}
+
+resource "technitium_record" "cloudflare_fallback" {
+  zone               = technitium_zone.root_forwarder.name
+  name               = "."
+  type               = "FWD"
+  value              = "1.1.1.1"
+  protocol           = "Udp"
+  forwarder_priority = 2
+  overwrite          = false
+}
+```
+
 ### Multiple Records at Same Name (Round-Robin)
 
 ```hcl
@@ -166,7 +196,7 @@ resource "technitium_record" "web2" {
 
 In addition to the arguments above, the following computed attributes are exported:
 
-* `id` - Record identifier (`zone::name::type::value` composite key). For MX records: `zone::name::MX::exchange:priority`. For SRV records: `zone::name::SRV::target:priority:weight:port`. For CAA records: `zone::name::CAA::value:flags:tag`. For FWD records: `zone::name::FWD::forwarder:protocol:priority`.
+* `id` - Record identifier (`zone::name::type::value` composite key). For MX records: `zone::name::MX::exchange:priority`. For SRV records: `zone::name::SRV::target:priority:weight:port`. For CAA records: `zone::name::CAA::value:flags:tag`. For FWD records: `zone::name::FWD::forwarder:protocol:priority:dnssecValidation`. The `dnssecValidation` field distinguishes otherwise-identical forwarders; the legacy 3-field form `forwarder:protocol:priority` is still accepted on import for backward compatibility.
 
 * `last_modified` - Timestamp of last modification.
 
@@ -187,6 +217,9 @@ terraform import technitium_record.sip "example.com::_sip._tcp.example.com::SRV:
 # CAA record (value:flags:tag)
 terraform import technitium_record.caa "example.com::example.com::CAA::letsencrypt.org:0:issue"
 
-# FWD record (forwarder:protocol:priority)
-terraform import technitium_record.forwarder ".::.::FWD::1.1.1.1:Udp:2"
+# FWD record (forwarder:protocol:priority:dnssecValidation)
+terraform import technitium_record.forwarder ".::.::FWD::1.1.1.1:Udp:2:true"
+
+# FWD record, legacy 3-field form (still accepted; dnssec_validation is left unset)
+terraform import technitium_record.forwarder_legacy ".::.::FWD::1.1.1.1:Udp:2"
 ```

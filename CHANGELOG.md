@@ -48,6 +48,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   produced inconsistent result after apply". A Secondary serves the signed data it receives
   from its primary, so sign the zone on the primary instead. (#100)
 
+### Added
+
+- `AUTHORS` file crediting contributors whose merged work was never named anywhere in the
+  repository, and an Attribution section in
+  `CONTRIBUTING.md` stating that contributors retain copyright in the work they author
+  and should put their own notice on new source files. (#115)
+
 ### Security
 
 - The acceptance-test suite no longer carries a hardcoded API token literal. The helper that
@@ -87,7 +94,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   which is refused at plan time since #100. The block is removed; the `Primary` member zone in
   the same example keeps its own. (#116)
 
+### Security
+
+- Three Go source files carried neither a copyright notice nor an SPDX license identifier:
+  `internal/client/tls_errors.go`, `internal/client/tls_errors_test.go`, and
+  `internal/provider/record_resource_import_test.go`. All 95 files now carry both. MPL-2.0
+  section 3.4 requires those notices to survive redistribution, and this provider is published
+  for environments where license and provenance metadata is inspected rather than assumed. A
+  regression test walks the repository so a file cannot be added without them. (#115)
+
 ### Test infrastructure
+
+- Acceptance-test configurations no longer hand-roll a `provider "technitium"` block pinned to
+  `http://127.0.0.1:5380`. Thirty-seven blocks across ten files now use the environment-aware
+  `testAccProviderHCL()` helper, so they follow `TECHNITIUM_SERVER_URL` and `TECHNITIUM_CACERT`
+  during the TLS acceptance run instead of talking plaintext on 5380 while the rest of the
+  suite used HTTPS on 5443. Completes the transport fix begun in #110, which corrected only the
+  Go direct client. A regression test scans the package so a hardcoded endpoint cannot be
+  reintroduced. (#115)
 
 - `make docs` and `make generate` no longer delete `docs/` and fail when run from a directory
   whose name is not `terraform-provider-technitium`, which includes every git worktree.

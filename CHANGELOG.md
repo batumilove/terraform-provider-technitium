@@ -62,6 +62,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   changes. (#108)
 - fix(ci): Go 1.26.6 toolchain — clear the govulncheck blocker red on main ([#103])
 
+### Documentation
+
+- Resource and data-source `page_title` values now use the tfplugindocs default,
+  `"<name> <Type> - terraform-provider-technitium"`, replacing `"... - Technitium DNS Server"`.
+  The product name in that slot implies an official relationship with Technitium that does not
+  exist; this is a third-party provider. The templates now use the generator's own expression
+  rather than restating the literal, so the value cannot drift from the build configuration.
+  (#116)
+- Five new worked DNSSEC examples on `technitium_zone`, covering the configurations that
+  previously existed only as prose: EdDSA (Ed448), RSA for legacy-validator interoperability,
+  the non-destructive NSEC/NSEC3 conversion, algorithm/curve rotation with
+  `change_acknowledgment` and the DS re-publication that must follow, and taking a zone
+  insecure with the parent-DS removal ordering. The destructive paths from #96 had thorough
+  documentation but nothing an operator could copy. (#116)
+- `technitium_catalog_membership` gains a documentation template. It was the only resource
+  without one, so its page carried the schema-derived argument list and none of the worked
+  examples, catalog-inheritance warning, destroy semantics, or import instructions its siblings
+  provide. (#116)
+
+### Fixed
+
+- The `technitium_catalog_membership` example declared a `dnssec` block on a `Catalog` zone,
+  which is refused at plan time since #100. The block is removed; the `Primary` member zone in
+  the same example keeps its own. (#116)
+
 ### Test infrastructure
 
 - `make docs` and `make generate` no longer delete `docs/` and fail when run from a directory

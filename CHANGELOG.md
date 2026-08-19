@@ -41,6 +41,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   result after apply" on every attempt. (RSA-signed zones have a separate, pre-existing state
   round-trip defect — the read model cannot represent "no curve" — tracked as #101.) (#96)
 
+### Security
+
+- The acceptance-test suite no longer carries a hardcoded API token literal. The helper that
+  resolves the test credential had a baked-in 64-character fallback used whenever
+  `TECHNITIUM_API_TOKEN` was unset. The value authenticated only to a disposable test
+  container and does not survive a container restart, so nothing needs rotating, but a
+  committed credential-shaped literal is flagged by secret scanners and reads badly in a
+  provider whose purpose is compliance tooling. An unset token now surfaces the provider's own
+  `Missing api_token` diagnostic naming the environment variable, instead of a confusing
+  invalid-token failure against whatever server is listening. A regression test scans the
+  package for credential-shaped literals so one cannot be reintroduced. No production code
+  changes. (#108)
+- fix(ci): Go 1.26.6 toolchain — clear the govulncheck blocker red on main ([#103])
+
+### Test infrastructure
+
+- test: gate live-server setup behind TF_ACC so `go test ./...` passes on a clean clone ([#109])
+- test: direct client follows the suite's transport instead of hardcoding HTTP ([#111])
+
+### Dependencies
+
+- chore(deps): update actions/checkout action to v7.0.1 ([#86])
+- chore(deps): update ossf/scorecard-action action to v2.4.4 ([#87])
+- chore(deps): update github/codeql-action action to v4.37.4 ([#91])
+- chore(deps): update github/codeql-action action to v4.37.6 ([#92])
+- chore(deps): update actions/attest-build-provenance action to v4.2.2 ([#93])
+- chore(deps): update github/codeql-action action to v4.37.7 ([#95])
+
 ## [1.2.1] - 2026-07-26
 
 ### Added
@@ -417,3 +445,12 @@ settings preserve the validator coverage for future runs.
 [#81]: https://github.com/darkhonor/terraform-provider-technitium/pull/81
 [#82]: https://github.com/darkhonor/terraform-provider-technitium/pull/82
 [#83]: https://github.com/darkhonor/terraform-provider-technitium/pull/83
+[#86]: https://github.com/darkhonor/terraform-provider-technitium/pull/86
+[#87]: https://github.com/darkhonor/terraform-provider-technitium/pull/87
+[#91]: https://github.com/darkhonor/terraform-provider-technitium/pull/91
+[#92]: https://github.com/darkhonor/terraform-provider-technitium/pull/92
+[#93]: https://github.com/darkhonor/terraform-provider-technitium/pull/93
+[#95]: https://github.com/darkhonor/terraform-provider-technitium/pull/95
+[#103]: https://github.com/darkhonor/terraform-provider-technitium/pull/103
+[#109]: https://github.com/darkhonor/terraform-provider-technitium/pull/109
+[#111]: https://github.com/darkhonor/terraform-provider-technitium/pull/111

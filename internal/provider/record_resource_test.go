@@ -32,6 +32,9 @@ func TestAccRecordResource_A(t *testing.T) {
 				Config: testAccRecordA("rec-a-test.example.com", "www.rec-a-test.example.com", "192.0.2.20"),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("technitium_record.web", "value", "192.0.2.20"),
+					resource.TestMatchResourceAttr("technitium_record.web", "id",
+						regexp.MustCompile(`^rec-a-test\.example\.com::www\.rec-a-test\.example\.com::A::192\.0\.2\.20$`)),
+					resource.TestCheckResourceAttrSet("technitium_record.web", "last_modified"),
 				),
 			},
 			// Import
@@ -212,6 +215,13 @@ resource "technitium_record" "web" {
   type  = "A"
   ttl   = 3600
   value = %q
+
+  # Imported GitOps configurations may retain these computed attributes in
+  # ignore_changes. Updating mutable rData must still permit the provider to
+  # return the value-derived ID and the server's fresh timestamp.
+  lifecycle {
+    ignore_changes = [id, last_modified, overwrite]
+  }
 }
 `, testAccAPIToken(), zone, name, ip)
 }

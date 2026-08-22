@@ -214,6 +214,21 @@ func (r *RecordResource) ModifyPlan(ctx context.Context, req resource.ModifyPlan
 	if req.Plan.Raw.IsNull() {
 		return // destroy plan
 	}
+
+	// Update may legitimately replace both computed values: the record ID is
+	// derived from mutable rData, and Technitium assigns a fresh modification
+	// timestamp. A lifecycle ignore_changes rule can otherwise copy their old
+	// state values into the plan, making the correct Update result look
+	// inconsistent to Terraform/OpenTofu. Invalidate them only for a real
+	// update; preserving them on a no-op avoids manufacturing drift.
+	if !req.State.Raw.IsNull() && !req.Plan.Raw.Equal(req.State.Raw) {
+		resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("id"), types.StringUnknown())...)
+		resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("last_modified"), types.StringUnknown())...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
+
 	if r.providerData != nil && r.providerData.STIGEngine != nil {
 		r.providerData.STIGEngine.ValidatePlan(
 			ctx,

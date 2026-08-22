@@ -197,11 +197,7 @@ func TestAccRecordDataSource(t *testing.T) {
 }
 
 func testAccRecordA(zone, name, ip string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
+	return testAccProviderHCL() + fmt.Sprintf(`
 
 resource "technitium_zone" "test" {
   name = %q
@@ -223,15 +219,11 @@ resource "technitium_record" "web" {
     ignore_changes = [id, last_modified, overwrite]
   }
 }
-`, testAccAPIToken(), zone, name, ip)
+`, zone, name, ip)
 }
 
 func testAccRecordCNAME(zone string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
+	return testAccProviderHCL() + fmt.Sprintf(`
 
 resource "technitium_zone" "test" {
   name = %q
@@ -245,15 +237,11 @@ resource "technitium_record" "alias" {
   type  = "CNAME"
   value = %q
 }
-`, testAccAPIToken(), zone, zone, zone)
+`, zone, zone, zone)
 }
 
 func testAccRecordTXT(zone string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
+	return testAccProviderHCL() + fmt.Sprintf(`
 
 resource "technitium_zone" "test" {
   name = %q
@@ -267,15 +255,11 @@ resource "technitium_record" "spf" {
   type  = "TXT"
   value = "v=spf1 -all"
 }
-`, testAccAPIToken(), zone, zone)
+`, zone, zone)
 }
 
 func testAccRecordAAAA(zone string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
+	return testAccProviderHCL() + fmt.Sprintf(`
 
 resource "technitium_zone" "test" {
   name = %q
@@ -289,15 +273,11 @@ resource "technitium_record" "ipv6" {
   type  = "AAAA"
   value = "2001:db8::1"
 }
-`, testAccAPIToken(), zone, zone)
+`, zone, zone)
 }
 
 func testAccRecordMX(zone string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
+	return testAccProviderHCL() + fmt.Sprintf(`
 
 resource "technitium_zone" "test" {
   name = %q
@@ -312,15 +292,11 @@ resource "technitium_record" "mail" {
   value    = "mail.%s"
   priority = 10
 }
-`, testAccAPIToken(), zone, zone, zone)
+`, zone, zone, zone)
 }
 
 func testAccRecordSRV(zone string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
+	return testAccProviderHCL() + fmt.Sprintf(`
 
 resource "technitium_zone" "test" {
   name = %q
@@ -337,15 +313,11 @@ resource "technitium_record" "sip" {
   weight   = 60
   port     = 5060
 }
-`, testAccAPIToken(), zone, zone, zone)
+`, zone, zone, zone)
 }
 
 func testAccRecordNS(zone string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
+	return testAccProviderHCL() + fmt.Sprintf(`
 
 resource "technitium_zone" "test" {
   name = %q
@@ -359,15 +331,11 @@ resource "technitium_record" "ns" {
   type  = "NS"
   value = "ns2.%s"
 }
-`, testAccAPIToken(), zone, zone, zone)
+`, zone, zone, zone)
 }
 
 func testAccRecordPTR() string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
+	return testAccProviderHCL() + `
 
 resource "technitium_zone" "reverse" {
   name = "2.0.192.in-addr.arpa"
@@ -381,15 +349,11 @@ resource "technitium_record" "ptr" {
   type  = "PTR"
   value = "web.rec-ptr-test.example.com"
 }
-`, testAccAPIToken())
+`
 }
 
 func testAccRecordCAA(zone string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
+	return testAccProviderHCL() + fmt.Sprintf(`
 
 resource "technitium_zone" "test" {
   name = %q
@@ -405,15 +369,11 @@ resource "technitium_record" "caa" {
   caa_flags = 0
   caa_tag   = "issue"
 }
-`, testAccAPIToken(), zone, zone)
+`, zone, zone)
 }
 
 func testAccRecordDataSource(zone string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
+	return testAccProviderHCL() + fmt.Sprintf(`
 
 resource "technitium_zone" "test" {
   name = %q
@@ -433,7 +393,7 @@ data "technitium_record" "web" {
   name = technitium_record.seed.name
   type = "A"
 }
-`, testAccAPIToken(), zone, zone)
+`, zone, zone)
 }
 
 func TestAccRecordResource_InputValidation_ARecordRejectsIPv6(t *testing.T) {
@@ -529,11 +489,7 @@ func TestAccRecordResource_MultiA(t *testing.T) {
 }
 
 func testAccRecordMultiA(zone, name, ip1, ip2 string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
+	return testAccProviderHCL() + fmt.Sprintf(`
 
 resource "technitium_zone" "test" {
   name = %q
@@ -556,7 +512,7 @@ resource "technitium_record" "a2" {
   value     = %q
   overwrite = false
 }
-`, testAccAPIToken(), zone, name, ip1, name, ip2)
+`, zone, name, ip1, name, ip2)
 }
 
 func TestAccRecordResource_MultiMX(t *testing.T) {
@@ -584,11 +540,7 @@ func TestAccRecordResource_MultiMX(t *testing.T) {
 }
 
 func testAccRecordMultiMX(zone string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
+	return testAccProviderHCL() + fmt.Sprintf(`
 
 resource "technitium_zone" "test" {
   name = %q
@@ -613,7 +565,7 @@ resource "technitium_record" "mx2" {
   priority  = 20
   overwrite = false
 }
-`, testAccAPIToken(), zone, zone, zone, zone, zone)
+`, zone, zone, zone, zone, zone)
 }
 
 func TestAccRecordResource_MultiNS(t *testing.T) {
@@ -639,11 +591,7 @@ func TestAccRecordResource_MultiNS(t *testing.T) {
 }
 
 func testAccRecordMultiNS(zone string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
+	return testAccProviderHCL() + fmt.Sprintf(`
 
 resource "technitium_zone" "test" {
   name = %q
@@ -666,7 +614,7 @@ resource "technitium_record" "ns2" {
   value     = "ns2.%s"
   overwrite = false
 }
-`, testAccAPIToken(), zone, zone, zone, zone, zone)
+`, zone, zone, zone, zone, zone)
 }
 
 func TestAccRecordResource_MultiCAA(t *testing.T) {
@@ -694,11 +642,7 @@ func TestAccRecordResource_MultiCAA(t *testing.T) {
 }
 
 func testAccRecordMultiCAA(zone string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
+	return testAccProviderHCL() + fmt.Sprintf(`
 
 resource "technitium_zone" "test" {
   name = %q
@@ -725,7 +669,7 @@ resource "technitium_record" "caa_wild" {
   caa_tag   = "issuewild"
   overwrite = false
 }
-`, testAccAPIToken(), zone, zone, zone)
+`, zone, zone, zone)
 }
 
 // --- SRV Edge Case Tests ---
@@ -753,11 +697,7 @@ func TestAccRecordResource_MultiSRV_DifferentPorts(t *testing.T) {
 }
 
 func testAccRecordMultiSRV(zone string, port1, port2 int) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
+	return testAccProviderHCL() + fmt.Sprintf(`
 
 resource "technitium_zone" "test" {
   name = %q
@@ -786,7 +726,7 @@ resource "technitium_record" "srv2" {
   port      = %d
   overwrite = false
 }
-`, testAccAPIToken(), zone, zone, zone, port1, zone, zone, port2)
+`, zone, zone, zone, port1, zone, zone, port2)
 }
 
 func TestAccRecordResource_MultiSRV_DifferentWeights(t *testing.T) {
@@ -812,11 +752,7 @@ func TestAccRecordResource_MultiSRV_DifferentWeights(t *testing.T) {
 }
 
 func testAccRecordMultiSRVWeights(zone string, weight1, weight2 int) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
+	return testAccProviderHCL() + fmt.Sprintf(`
 
 resource "technitium_zone" "test" {
   name = %q
@@ -845,7 +781,7 @@ resource "technitium_record" "srv2" {
   port      = 5060
   overwrite = false
 }
-`, testAccAPIToken(), zone, zone, zone, weight1, zone, zone, weight2)
+`, zone, zone, zone, weight1, zone, zone, weight2)
 }
 
 // --- TXT Torture Tests ---
@@ -875,11 +811,7 @@ func TestAccRecordResource_MultiTXT(t *testing.T) {
 }
 
 func testAccRecordMultiTXT(zone string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
+	return testAccProviderHCL() + fmt.Sprintf(`
 
 resource "technitium_zone" "test" {
   name = %q
@@ -910,7 +842,7 @@ resource "technitium_record" "verification" {
   value     = "google-site-verification=abc123def456"
   overwrite = false
 }
-`, testAccAPIToken(), zone, zone, zone, zone)
+`, zone, zone, zone, zone)
 }
 
 func TestAccRecordResource_TXT_SpecialChars(t *testing.T) {
@@ -937,11 +869,7 @@ func TestAccRecordResource_TXT_SpecialChars(t *testing.T) {
 }
 
 func testAccRecordTXTSpecialChars(zone string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
+	return testAccProviderHCL() + fmt.Sprintf(`
 
 resource "technitium_zone" "test" {
   name = %q
@@ -972,7 +900,7 @@ resource "technitium_record" "with_semicolons" {
   value     = "v=spf1; redirect=_spf.example.com"
   overwrite = false
 }
-`, testAccAPIToken(), zone, zone, zone, zone)
+`, zone, zone, zone, zone)
 }
 
 func TestAccRecordResource_TXT_LongValue(t *testing.T) {
@@ -1001,11 +929,7 @@ func TestAccRecordResource_TXT_LongValue(t *testing.T) {
 }
 
 func testAccRecordTXTLong(zone, value string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
+	return testAccProviderHCL() + fmt.Sprintf(`
 
 resource "technitium_zone" "test" {
   name = %q
@@ -1020,7 +944,7 @@ resource "technitium_record" "dkim" {
   value     = %q
   overwrite = false
 }
-`, testAccAPIToken(), zone, zone, value)
+`, zone, zone, value)
 }
 
 // --- Lifecycle Edge Case Tests ---
@@ -1047,11 +971,7 @@ func TestAccRecordResource_DestroyOneOfTwo(t *testing.T) {
 }
 
 func testAccRecordSingleFromMultiA(zone, name, ip string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
+	return testAccProviderHCL() + fmt.Sprintf(`
 
 resource "technitium_zone" "test" {
   name = %q
@@ -1066,7 +986,7 @@ resource "technitium_record" "a1" {
   value     = %q
   overwrite = false
 }
-`, testAccAPIToken(), zone, name, ip)
+`, zone, name, ip)
 }
 
 func TestAccRecordResource_ImportWithSiblings(t *testing.T) {

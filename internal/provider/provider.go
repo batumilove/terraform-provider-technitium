@@ -67,6 +67,7 @@ type TechnitiumProviderData struct {
 	Client         *client.Client
 	STIGEnabled    bool
 	NSS            bool
+	Enforcement    string // resolved stig_compliance enforcement ("" when no block; else strict|warn|silent, default strict)
 	Categorization Categorization
 	STIGEngine     *validators.Engine // nil when STIG disabled
 }
@@ -147,7 +148,7 @@ func (p *TechnitiumProvider) Schema(_ context.Context, _ provider.SchemaRequest,
 						Optional:    true,
 					},
 					"enforcement": schema.StringAttribute{
-						Description: "STIG enforcement policy: strict (errors block apply), warn (warnings only), silent (suppress all). Default: strict.",
+						Description: "STIG enforcement policy: strict (errors block apply), warn (warnings only), silent (suppress all STIG findings; action-consequence notices for destructive DNSSEC changes still warn). Default: strict.",
 						Optional:    true,
 					},
 					"suppress": schema.ListAttribute{
@@ -274,6 +275,8 @@ func (p *TechnitiumProvider) Configure(ctx context.Context, req provider.Configu
 				return
 			}
 		}
+
+		providerData.Enforcement = enforcement
 
 		// Parse suppress list and validate IDs
 		var suppressions []string

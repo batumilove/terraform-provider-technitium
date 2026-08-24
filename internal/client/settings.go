@@ -58,6 +58,16 @@ type ServerSettings struct {
 	CacheMinimumRecordTtl        int       `json:"cacheMinimumRecordTtl"`
 	CacheMaximumRecordTtl        int       `json:"cacheMaximumRecordTtl"`
 	TsigKeys                     []TSIGKey `json:"tsigKeys"`
+
+	// Web service settings
+	WebServiceLocalAddresses              []string `json:"webServiceLocalAddresses"`
+	WebServiceHttpPort                    int      `json:"webServiceHttpPort"`
+	WebServiceEnableTls                   bool     `json:"webServiceEnableTls"`
+	WebServiceEnableHttp3                 bool     `json:"webServiceEnableHttp3"`
+	WebServiceHttpToTlsRedirect           bool     `json:"webServiceHttpToTlsRedirect"`
+	WebServiceUseSelfSignedTlsCertificate bool     `json:"webServiceUseSelfSignedTlsCertificate"`
+	WebServiceTlsPort                     int      `json:"webServiceTlsPort"`
+	WebServiceTlsCertificatePath          string   `json:"webServiceTlsCertificatePath"`
 }
 
 // SettingsGet returns the current server settings.

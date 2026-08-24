@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Contributed by [@Ujstor](https://github.com/Ujstor). New resources: `technitium_cluster` (Primary initialization),
+  `technitium_cluster_secondary` (Secondary join, with `terraform import`
+  support and in-place adoption semantics for `node_url` /
+  `primary_node_url`), `technitium_sso` (OIDC SSO incl. group mapping),
+  `technitium_user`, and `technitium_api_token`.
+- `technitium_zone`: zone access options `query_access` +
+  `query_access_network_acl` (#89) and `dynamic_update` +
+  `dynamic_update_network_acl` (RFC 2136 dynamic updates).
+- `technitium_server_settings`: web service TLS settings.
+- TLS acceptance-test environment (`docker-compose.test.tls.yml`).
 - `technitium_zone`: `dnssec.change_acknowledgment` — per-zone, per-transition operator
   acknowledgment for destructive DNSSEC changes (`"<ALGORITHM>/<CURVE>"` for a re-sign
   target, `"unsigned"` for unsigning). (#96)
@@ -36,6 +46,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `technitium_record`: refresh no longer aborts when the record's parent
+  zone is gone ("No such zone was found"); the record is removed from state
+  and planned for recreation (#88).
 - `technitium_zone`: changing `dnssec` `algorithm`/`curve`/`nx_proof` on an already-signed
   ECDSA/EDDSA zone was silently ignored by Update, producing "Provider produced inconsistent
   result after apply" on every attempt. (RSA-signed zones have a separate, pre-existing state
@@ -47,6 +60,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   not Primary, and refresh read the zone back unsigned, failing the apply with "Provider
   produced inconsistent result after apply". A Secondary serves the signed data it receives
   from its primary, so sign the zone on the primary instead. (#100)
+- `technitium_sso`: removing `authority`, `client_id`, `metadata_address`, `scopes`, or
+  `group_map` from configuration now sends an explicit clear. The set API retains every
+  omitted parameter, so the removal previously either failed the apply with "Provider
+  produced inconsistent result after apply" or — for `group_map` — was skipped silently
+  while the server kept granting the removed group mappings. Server-side `group_map`
+  entries now also surface as drift during refresh when the attribute is unset. Removing
+  `scopes` resets the server to its default scope list (openid, profile, email), which is
+  what unset already meant for that attribute. (#94)
+- `technitium_user`: removing `display_name` from configuration now resets it on the
+  server instead of retaining the old value and failing the apply with "Provider produced
+  inconsistent result after apply". The server substitutes the username as its
+  display-name default, so the attribute is read back only while it is configured. (#94)
 
 ### Added
 
